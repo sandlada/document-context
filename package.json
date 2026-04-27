@@ -1,0 +1,43 @@
+{
+    "author": "kai-orion",
+    "description": "(For private use.) Inject some configurations and methods into the document.",
+    "devDependencies": {
+        "@typescript/native-preview": "^7.0.0-dev.20260426.1",
+        "happy-dom": "^20.9.0",
+        "tsdown": "^0.21.10",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.5"
+    },
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "exports": {
+        ".": {
+            "import": "./build/index.js",
+            "types": "./build/index.d.ts"
+        }
+    },
+    "files": [
+        "build"
+    ],
+    "keywords": [
+        "private-use",
+        "html",
+        "document-context",
+        "theme-config",
+        "sandlada"
+    ],
+    "license": "MIT",
+    "main": "./build/index.js",
+    "name": "@sandlada/document-context",
+    "publishConfig": {
+        "access": "public"
+    },
+    "scripts": {
+        "build": "tsdown",
+        "test": "vitest"
+    },
+    "type": "module",
+    "types": "./build/index.d.ts",
+    "version": "0.0.1-20260427.a"
+}
