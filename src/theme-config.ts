@@ -10,4 +10,10 @@ export interface IThemeConfig {
     neutralPaletteArgb: number
     neutralVariantPaletteArgb: number
     specVersion: "2021" | "2025"
+    isPrimaryPaletteEnabled: boolean
+    isSecondaryPaletteEnabled: boolean
+    isTertiaryPaletteEnabled: boolean
+    isErrorPaletteEnabled: boolean
+    isNeutralPaletteEnabled: boolean
+    isNeutralVariantPaletteEnabled: boolean
 }

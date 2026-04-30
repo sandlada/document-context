@@ -1,5 +1,5 @@
 {
-    "author": "kai-orion",
+    "author": "Kai Orion <kai-orion@sandlada.com>",
     "description": "(For private use.) Inject some configurations and methods into the document.",
     "devDependencies": {
         "@typescript/native-preview": "^7.0.0-dev.20260426.1",
@@ -20,6 +20,7 @@
     "files": [
         "build"
     ],
+    "homepage": "https://github.com/sandlada/document-context#readme",
     "keywords": [
         "private-use",
         "html",
@@ -33,11 +34,15 @@
     "publishConfig": {
         "access": "public"
     },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sandlada/document-context.git"
+    },
     "scripts": {
         "build": "tsdown",
         "test": "vitest"
     },
     "type": "module",
     "types": "./build/index.d.ts",
-    "version": "0.0.1-20260427.a"
+    "version": "0.0.1-20260430.d"
 }
