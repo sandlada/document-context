@@ -2,11 +2,12 @@
     "author": "Kai Orion <kai-orion@sandlada.com>",
     "description": "(For private use.) Inject some configurations and methods into the document.",
     "devDependencies": {
-        "@typescript/native-preview": "^7.0.0-dev.20260426.1",
-        "happy-dom": "^20.9.0",
-        "tsdown": "^0.21.10",
+        "@typescript/native-preview": "^7.0.0-dev.20260621.1",
+        "happy-dom": "^20.10.6",
+        "rxjs": "^7.8.2",
+        "tsdown": "^0.22.3",
         "typescript": "^6.0.3",
-        "vitest": "^4.1.5"
+        "vitest": "^4.1.9"
     },
     "engines": {
         "node": ">=22.12.0"
@@ -44,5 +45,5 @@
     },
     "type": "module",
     "types": "./build/index.d.ts",
-    "version": "0.0.1-20260430.d"
+    "version": "0.0.1-20260622.a"
 }

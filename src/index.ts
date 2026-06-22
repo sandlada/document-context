@@ -1,136 +1,73 @@
-import { ContextSymbol } from "./enhance-document";
-import type { ICustomEventMap } from "./event-map";
-import type { IThemeConfig } from "./theme-config";
+import type { Observable } from "rxjs";
+import type { IThemeRaw, ThemeEntity } from "./domain/entities/theme.entity";
+import type { IBoundUseCases } from "./document-binder";
+import { ContextSymbol, bindUseCasesToDocument } from "./document-binder";
+import { InMemoryThemeStore } from "./infrastructure/stores/in-memory-theme.store";
+import { ThemeRepository } from "./infrastructure/repositories/theme.repository";
+import { DOMAttrRepository } from "./infrastructure/repositories/dom-attr.repository";
+import { UpdateThemeUseCase } from "./application/use-cases/update-theme.use-case";
+import { ToggleDarkModeUseCase } from "./application/use-cases/toggle-dark-mode.use-case";
+import { LoadThemeFromStorageUseCase } from "./application/use-cases/load-theme-from-storage.use-case";
+import { SaveThemeToStorageUseCase } from "./application/use-cases/save-theme-to-storage.use-case";
+import { SyncAttrToDomUseCase } from "./application/use-cases/sync-attr-to-dom.use-case";
+
+export { ContextSymbol } from "./document-binder";
+export type { IBoundUseCases, IBinderDeps, IBinderResult } from "./document-binder";
+export { ThemeEntity, type IThemeRaw } from "./domain/entities/theme.entity";
+export type { IThemeRepository } from "./domain/repositories/i-theme.repository";
+export type { IDOMAttrRepository } from "./domain/repositories/i-dom-attr.repository";
+
+export { UpdateThemeUseCase } from "./application/use-cases/update-theme.use-case";
+export { ToggleDarkModeUseCase } from "./application/use-cases/toggle-dark-mode.use-case";
+export { LoadThemeFromStorageUseCase } from "./application/use-cases/load-theme-from-storage.use-case";
+export { SaveThemeToStorageUseCase } from "./application/use-cases/save-theme-to-storage.use-case";
+export { SyncAttrToDomUseCase } from "./application/use-cases/sync-attr-to-dom.use-case";
+
+export { InMemoryThemeStore } from "./infrastructure/stores/in-memory-theme.store";
+export { LocalStorageThemeStore } from "./infrastructure/stores/local-storage-theme.store";
+export { ThemeMapper } from "./infrastructure/mappers/theme.mapper";
+export { LocalStorageMapper } from "./infrastructure/mappers/local-storage.mapper";
+export { ThemeRepository } from "./infrastructure/repositories/theme.repository";
+export { DOMAttrRepository } from "./infrastructure/repositories/dom-attr.repository";
 
 declare global {
     interface Document {
-        enhanceDocument?: () => void
-
-        [ContextSymbol]: {
-            themeConfig: IThemeConfig
-
-            getIsDark: () => boolean
-            setIsDark: (isDark: boolean) => void
-            toggleIsDark: () => void
-            getIsDarkAttr: () => boolean
-            setIsDarkAttr: (isDark: boolean) => void
-
-            getSourceColorArgb: () => number
-            setSourceColorArgb: (argb: number) => void
-
-            getContrastLevel: () => number
-            setContrastLevel: (contrastLevel: number) => void
-
-            getVariant: () => number
-            setVariant: (variant: number) => void
-
-            getSpecVersion: () => string
-            setSpecVersion: (specVersion: '2021' | '2025') => void
-            setSpecVersionAttr: (specVersion: '2021' | '2025') => void
-            getSpecVersionAttr: () => string | null
-
-            getPrimaryPaletteArgb: () => number
-            setPrimaryPaletteArgb: (argb: number) => void
-            setPrimaryPaletteArgbAttr: (argb: number) => void
-            getPrimaryPaletteArgbAttr: () => number | null
-
-            getSecondaryPaletteArgb: () => number
-            setSecondaryPaletteArgbAttr: (argb: number) => void
-            getSecondaryPaletteArgbAttr: () => number | null
-            setSecondaryPaletteArgb: (argb: number) => void
-
-            getTertiaryPaletteArgb: () => number
-            setTertiaryPaletteArgb: (argb: number) => void
-            setTertiaryPaletteArgbAttr: (argb: number) => void
-            getTertiaryPaletteArgbAttr: () => number | null
-
-            getErrorPaletteArgb: () => number
-            setErrorPaletteArgb: (argb: number) => void
-            setErrorPaletteArgbAttr: (argb: number) => void
-            getErrorPaletteArgbAttr: () => number | null
-
-            getNeutralPaletteArgb: () => number
-            setNeutralPaletteArgb: (argb: number) => void
-            setNeutralPaletteArgbAttr: (argb: number) => void
-            getNeutralPaletteArgbAttr: () => number | null
-
-            getNeutralVariantPaletteArgb: () => number
-            setNeutralVariantPaletteArgb: (argb: number) => void
-            setNeutralVariantPaletteArgbAttr: (argb: number) => void
-            getNeutralVariantPaletteArgbAttr: () => number | null
-
-            getIsPrimaryPaletteEnabled: () => boolean
-            setIsPrimaryPaletteEnabled: (enabled: boolean) => void
-            enablePrimaryPalette: () => void
-            disablePrimaryPalette: () => void
-            togglePrimaryPalette: () => void
-            enablePrimaryPaletteAttr: () => void
-            disablePrimaryPaletteAttr: () => void
-            getIsPrimaryPaletteEnabledAttr: () => boolean
-
-            getIsSecondaryPaletteEnabled: () => boolean
-            setIsSecondaryPaletteEnabled: (enabled: boolean) => void
-            enableSecondaryPalette: () => void
-            disableSecondaryPalette: () => void
-            toggleSecondaryPalette: () => void
-            enableSecondaryPaletteAttr: () => void
-            disableSecondaryPaletteAttr: () => void
-            getIsSecondaryPaletteEnabledAttr: () => boolean
-
-            getIsTertiaryPaletteEnabled: () => boolean
-            setIsTertiaryPaletteEnabled: (enabled: boolean) => void
-            enableTertiaryPalette: () => void
-            disableTertiaryPalette: () => void
-            toggleTertiaryPalette: () => void
-            enableTertiaryPaletteAttr: () => void
-            disableTertiaryPaletteAttr: () => void
-            getIsTertiaryPaletteEnabledAttr: () => boolean
-
-            getIsErrorPaletteEnabled: () => boolean
-            setIsErrorPaletteEnabled: (enabled: boolean) => void
-            enableErrorPalette: () => void
-            disableErrorPalette: () => void
-            toggleErrorPalette: () => void
-            enableErrorPaletteAttr: () => void
-            disableErrorPaletteAttr: () => void
-            getIsErrorPaletteEnabledAttr: () => boolean
-
-            getIsNeutralPaletteEnabled: () => boolean
-            setIsNeutralPaletteEnabled: (enabled: boolean) => void
-            enableNeutralPalette: () => void
-            disableNeutralPalette: () => void
-            toggleNeutralPalette: () => void
-            enableNeutralPaletteAttr: () => void
-            disableNeutralPaletteAttr: () => void
-            getIsNeutralPaletteEnabledAttr: () => boolean
-
-            getIsNeutralVariantPaletteEnabled: () => boolean
-            setIsNeutralVariantPaletteEnabled: (enabled: boolean) => void
-            enableNeutralVariantPalette: () => void
-            disableNeutralVariantPalette: () => void
-            toggleNeutralVariantPalette: () => void
-            enableNeutralVariantPaletteAttr: () => void
-            disableNeutralVariantPaletteAttr: () => void
-            getIsNeutralVariantPaletteEnabledAttr: () => boolean
-
-            isThemeConfig: (obj: any) => obj is IThemeConfig
-
-            themeChangeToLight: () => void
-            themeChangeToDark: () => void
-            attrChangeToLight: () => void
-            attrChangeToDark: () => void
-
-            getThemeConfigFromLocalStorage: (key?: string) => IThemeConfig
-            saveThemeConfigToLocalStorage: (themeConfig: IThemeConfig, key?: string) => void
-            themeChange: (themeConfig: Partial<IThemeConfig>) => void
-
-        }
-
+        [ContextSymbol]?: IBoundUseCases;
     }
-
-    interface DocumentEventMap extends ICustomEventMap { }
 }
 
-export * from './enhance-document';
-export * from './event-map';
-export * from './theme-config';
+/**
+ * 组合根：一键初始化并将用例绑定到 document[ContextSymbol]
+ * 返回绑定结果（含 subscription），调用方可按需管理生命周期
+ */
+export function enhanceDocument(doc: Document = document) {
+    if (typeof doc === "undefined") {
+        throw new Error("This function can only be called in a browser environment.");
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((doc as any)[ContextSymbol]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return { bound: (doc as any)[ContextSymbol] as IBoundUseCases, subscription: undefined };
+    }
+
+    const store = new InMemoryThemeStore();
+    const themeRepo = new ThemeRepository(store);
+    const domRepo = new DOMAttrRepository(doc);
+
+    const updateThemeUseCase = new UpdateThemeUseCase(themeRepo);
+    const toggleDarkModeUseCase = new ToggleDarkModeUseCase(themeRepo);
+    const loadFromStorageUseCase = new LoadThemeFromStorageUseCase(themeRepo);
+    const saveToStorageUseCase = new SaveThemeToStorageUseCase(themeRepo);
+    const syncAttrToDomUseCase = new SyncAttrToDomUseCase(themeRepo, domRepo);
+
+    return bindUseCasesToDocument(doc, {
+        themeRepo,
+        domRepo,
+        updateThemeUseCase,
+        toggleDarkModeUseCase,
+        loadFromStorageUseCase,
+        saveToStorageUseCase,
+        syncAttrToDomUseCase,
+    });
+}
