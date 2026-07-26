@@ -1,13 +1,12 @@
 {
-    "author": "Kai Orion <kai-orion@sandlada.com>",
+    "author": "Kai Orion",
     "description": "(For private use.) Inject some configurations and methods into the document.",
     "devDependencies": {
-        "@typescript/native-preview": "^7.0.0-dev.20260621.1",
-        "happy-dom": "^20.10.6",
+        "typescript": "^7.0.2",
+        "happy-dom": "^20.11.1",
         "rxjs": "^7.8.2",
-        "tsdown": "^0.22.3",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.9"
+        "tsdown": "^0.22.14",
+        "vitest": "^4.1.10"
     },
     "engines": {
         "node": ">=22.12.0"
