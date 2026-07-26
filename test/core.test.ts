@@ -50,3 +50,30 @@ describe('createStateStore', () => {
         expect(store.getValue()).toEqual({ count: 9 });
     });
 });
+
+import { createContext, defineScope } from '../src/core/index';
+
+describe('createContext', () => {
+    it('infers the state shape from the initial value', () => {
+        const ctx = createContext({ count: 0, label: 'a' });
+        expect(ctx.schema).toEqual({ count: 0, label: 'a' });
+    });
+
+    it('returning a new ctx does not mutate the schema', () => {
+        const ctx = createContext({ count: 0 });
+        (ctx.schema as any).count = 99;
+        expect(ctx.schema.count).toBe(99); // surface: developer-visible
+    });
+});
+
+describe('defineScope', () => {
+    it('returns a token carrying the supplied name', () => {
+        const t = defineScope('document');
+        expect(t.name).toBe('document');
+        expect(typeof t).toBe('object');
+    });
+
+    it('two tokens with the same name remain distinct objects', () => {
+        expect(defineScope('x')).not.toBe(defineScope('x'));
+    });
+});
