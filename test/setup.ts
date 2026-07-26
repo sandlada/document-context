@@ -15,12 +15,15 @@ const createLocalStorageMock = () => {
 beforeEach(() => {
     vi.stubGlobal('localStorage', createLocalStorageMock());
 
-    // 重置 document 上所有 Symbol 键
-    for (const key of Object.getOwnPropertySymbols(document)) {
-        delete (document as any)[key];
-    }
+    // 重置 document.documentElement 上所有 Symbol 键。
+    // 注意: 不要重置 document 自身的 Symbol,会破坏 happy-dom 内部状态
+    // (例如 PropertySymbol.elementArray),导致 documentElement getter 抛错。
     for (const key of Object.getOwnPropertySymbols(document.documentElement)) {
-        delete (document.documentElement as any)[key];
+        try {
+            delete (document.documentElement as any)[key];
+        } catch {
+            // 跳过删除此 Symbol
+        }
     }
     // @ts-ignore
     document.removeAllListeners?.();
