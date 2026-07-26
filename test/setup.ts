@@ -1,5 +1,4 @@
 import { beforeEach, vi } from 'vitest';
-import { ContextSymbol, enhanceDocument } from '../src/index';
 
 const createLocalStorageMock = () => {
     const store: Record<string, string> = {};
@@ -13,16 +12,16 @@ const createLocalStorageMock = () => {
     };
 };
 
-// 重置 document 擴展，避免 side-effect 污染
 beforeEach(() => {
-    // 替換 localStorage 為可靠的記憶體實作
     vi.stubGlobal('localStorage', createLocalStorageMock());
 
-    // 清除先前 Symbol 資料（必須使用實際的 ContextSymbol，Symbol() 與 Symbol.for() 不同）
-    delete (document as any)[ContextSymbol];
-
+    // 重置 document 上所有 Symbol 键
+    for (const key of Object.getOwnPropertySymbols(document)) {
+        delete (document as any)[key];
+    }
+    for (const key of Object.getOwnPropertySymbols(document.documentElement)) {
+        delete (document.documentElement as any)[key];
+    }
     // @ts-ignore
     document.removeAllListeners?.();
-
-    enhanceDocument();
 });
