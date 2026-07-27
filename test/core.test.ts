@@ -77,3 +77,56 @@ describe('defineScope', () => {
         expect(defineScope('x')).not.toBe(defineScope('x'));
     });
 });
+
+import { mount, readState, updateState, subscribeState } from '../src/core/index';
+
+describe('mount', () => {
+    it('creates an opaque session token', () => {
+        const ctx = createContext({ count: 0 });
+        const s = mount(document, ctx);
+        expect((s as any)[SessionBrand]).toBe(true);
+        expect(s.target).toBe(document);
+    });
+
+    it('is idempotent — repeated mount returns the same token', () => {
+        const ctx = createContext({ count: 0 });
+        const a = mount(document, ctx);
+        const b = mount(document, ctx);
+        expect(a).toBe(b);
+    });
+
+    it('fresh state per mount call when target is unique', () => {
+        const a = mount(document, createContext({ count: 0 }));
+        // happy-dom setup resets documentElement internals, so use a fresh node instead of document.body.
+        const b = mount(document.createElement('div'), createContext({ count: 0 }));
+        updateState(a, { count: 1 });
+        expect(readState(b).count).toBe(0);
+    });
+});
+
+describe('readState / updateState', () => {
+    it('returns the initial state', () => {
+        const s = mount(document, createContext({ count: 0 }));
+        expect(readState(s)).toEqual({ count: 0 });
+    });
+
+    it('updateState returns the new state and reflects on readState', () => {
+        const s = mount(document, createContext({ count: 0 }));
+        const next = updateState(s, { count: 5 });
+        expect(next.count).toBe(5);
+        expect(readState(s).count).toBe(5);
+    });
+});
+
+describe('subscribeState', () => {
+    it('emits the next state after each updateState', () => {
+        const s = mount(document, createContext({ count: 0 }));
+        const seen: number[] = [];
+        const unsub = subscribeState(s, (st) => seen.push(st.count));
+        updateState(s, { count: 1 });
+        updateState(s, { count: 2 });
+        unsub();
+        updateState(s, { count: 3 });
+        expect(seen).toEqual([0, 1, 2]);
+    });
+});
