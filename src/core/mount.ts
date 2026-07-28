@@ -3,8 +3,16 @@ import { createStateStore } from './state-store';
 import type { IContext } from './context';
 import { SessionBrand } from './internals/branding';
 import type { IState, ISession, IMountOptions } from './internals/session';
+import { watchRemoval } from '../adapters/dom-mutation';
+import { dispose } from './dispose';
 
-const BRIDGE_REGISTRY = new WeakMap<ISession<any>, () => void>();
+export const BRIDGE_REGISTRY: WeakMap<ISession<any>, Set<() => void>> = new WeakMap();
+
+export function registerBridgeDisposer<S extends IState>(session: ISession<S>, disposer: () => void): void {
+    let set = BRIDGE_REGISTRY.get(session);
+    if (!set) { set = new Set(); BRIDGE_REGISTRY.set(session, set); }
+    set.add(disposer);
+}
 
 // Symbol-keyed cache to guarantee idempotency per target.
 const TARGET_CACHE: WeakMap<object, ISession<any>[]> = new WeakMap();
@@ -39,8 +47,11 @@ export function mount<S extends IState>(
     };
     attachSession(target, session);
     if (options.sync) {
-        const dispose = bridgeState(session, options.sync);
-        BRIDGE_REGISTRY.set(session, dispose);
+        const syncDispose = bridgeState(session, options.sync);
+        registerBridgeDisposer(session, syncDispose);
+    }
+    if (typeof Node !== 'undefined' && target instanceof Node) {
+        watchRemoval(target, () => dispose(session));
     }
     return session;
 }

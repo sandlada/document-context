@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bridgeState, createContext, mount, updateState, readState, saveState, loadState, subscribeState } from '../src/core/index';
+import { bridgeState, createContext, dispose, mount, updateState, readState, saveState, loadState, subscribeState } from '../src/core/index';
 
 describe('localStorage adapter', () => {
     it('saveState + loadState round-trip', () => {
@@ -68,5 +68,25 @@ describe('bridgeState', () => {
         updateState(s, { count: 2 });
         await Promise.resolve();
         expect(target.dataset.count).toBe('2');
+    });
+});
+
+describe('dispose', () => {
+    it('removes the listener and the bridge subscription', () => {
+        const s = mount(document.createElement('div'), createContext({ count: 0 }));
+        // happy-dom throws on document.body; use a fresh element instead.
+        bridgeState(s, { target: document.createElement('div'), properties: { count: 'dataset.count' }, ignoreInternalWrite: true });
+        dispose(s);
+        expect(() => updateState(s, { count: 9 })).toThrow();
+    });
+
+    it('disconnect via MutationObserver when target is removed', async () => {
+        const el = document.createElement('div');
+        const host = document.createElement('div');
+        host.appendChild(el);
+        const s = mount(el, createContext({ count: 0 }));
+        host.removeChild(el);
+        await new Promise((r) => setTimeout(r, 50));
+        expect(() => readState(s)).toThrow();
     });
 });

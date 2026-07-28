@@ -1,6 +1,7 @@
 import { InternalWriteSymbol } from './internals/branding';
 import { readPropertyPath, writePropertyPath } from './internals/property-path';
 import type { IBridgeOptions, ISession, IState } from './internals/session';
+import { registerBridgeDisposer } from './mount';
 
 export function bridgeState<S extends IState>(
     session: ISession<S>,
@@ -67,9 +68,11 @@ export function bridgeState<S extends IState>(
 
     flush();
 
-    return () => {
+    const disposer = () => {
         disposed = true;
         subscription.unsubscribe();
         for (const event of events) eventTarget.removeEventListener(event, onEvent);
     };
+    registerBridgeDisposer(session, disposer);
+    return disposer;
 }
