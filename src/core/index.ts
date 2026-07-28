@@ -8,3 +8,5 @@ export * from './update-state';
 export * from './subscribe-state';
 export * from './provide';
 export * from './inject';
+export * from './save-state';
+export * from './load-state';
