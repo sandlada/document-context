@@ -10,3 +10,4 @@ export * from './provide';
 export * from './inject';
 export * from './save-state';
 export * from './load-state';
+export * from './bridge';

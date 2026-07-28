@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createContext, mount, updateState, readState, saveState, loadState } from '../src/core/index';
+import { bridgeState, createContext, mount, updateState, readState, saveState, loadState, subscribeState } from '../src/core/index';
 
 describe('localStorage adapter', () => {
     it('saveState + loadState round-trip', () => {
@@ -16,5 +16,57 @@ describe('localStorage adapter', () => {
         const s = mount(document, createContext({ count: 1 }));
         loadState(s, { adapter: 'localStorage', key: 'bad' });
         expect(readState(s).count).toBe(1);
+    });
+});
+
+describe('bridgeState', () => {
+    it('JS → DOM: updateState writes to target property', async () => {
+        const target = document.createElement('div');
+        const s = mount(document, createContext<{ count: number; label: string }>({ count: 1, label: 'en' }));
+        bridgeState(s, { target, properties: { count: 'dataset.count', label: 'lang' }, ignoreInternalWrite: true });
+        updateState(s, { count: 9, label: 'fr' });
+        await Promise.resolve();
+        expect(target.dataset.count).toBe('9');
+        expect(target.lang).toBe('fr');
+    });
+
+    it('DOM → JS: input event reads back into state', () => {
+        const target = document.createElement('div');
+        const s = mount(document, createContext<{ label: string }>({ label: 'en' }));
+        bridgeState(s, { target, properties: { label: 'lang' }, events: ['input'], batch: false, ignoreInternalWrite: true });
+        target.lang = 'zh';
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(readState(s).label).toBe('zh');
+    });
+
+    it('ignoreInternalWrite breaks the loop', () => {
+        const target = document.createElement('div');
+        let current = '';
+        Object.defineProperty(target, 'lang', {
+            configurable: true,
+            get: () => current,
+            set: (value: string) => {
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+                current = value;
+            },
+        });
+        const s = mount(document, createContext<{ label: string }>({ label: 'en' }));
+        bridgeState(s, { target, properties: { label: 'lang' }, events: ['input'], batch: false, ignoreInternalWrite: true });
+        let count = 0;
+        subscribeState(s, () => count++);
+        count = 0;
+        updateState(s, { label: 'fr' });
+        expect(count).toBe(1);
+        expect(readState(s).label).toBe('fr');
+    });
+
+    it('batch: true coalesces writes within a microtask', async () => {
+        const target = document.createElement('div');
+        const s = mount(document, createContext<{ count: number }>({ count: 0 }));
+        bridgeState(s, { target, properties: { count: 'dataset.count' }, batch: true });
+        updateState(s, { count: 1 });
+        updateState(s, { count: 2 });
+        await Promise.resolve();
+        expect(target.dataset.count).toBe('2');
     });
 });

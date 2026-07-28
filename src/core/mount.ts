@@ -1,7 +1,10 @@
+import { bridgeState } from './bridge';
 import { createStateStore } from './state-store';
 import type { IContext } from './context';
 import { SessionBrand } from './internals/branding';
 import type { IState, ISession, IMountOptions } from './internals/session';
+
+const BRIDGE_REGISTRY = new WeakMap<ISession<any>, () => void>();
 
 // Symbol-keyed cache to guarantee idempotency per target.
 const TARGET_CACHE: WeakMap<object, ISession<any>[]> = new WeakMap();
@@ -35,5 +38,9 @@ export function mount<S extends IState>(
         store,
     };
     attachSession(target, session);
+    if (options.sync) {
+        const dispose = bridgeState(session, options.sync);
+        BRIDGE_REGISTRY.set(session, dispose);
+    }
     return session;
 }
