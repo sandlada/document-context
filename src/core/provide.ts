@@ -6,13 +6,13 @@ export interface IServiceOptions {
 }
 
 export interface IRegistryEntry {
-    value?: unknown;
     factory: () => unknown;
     lifecycle: 'singleton' | 'transient' | 'scoped';
 }
 
 export const REGISTRY: WeakMap<ISession<any>, Map<unknown, IRegistryEntry>> = new WeakMap();
 export const SINGLETON_CACHE: Map<unknown, unknown> = new Map();
+export const SESSIONS: Set<ISession<any>> = new Set();
 
 function resolveKey(token: unknown): unknown {
     return token;
@@ -31,4 +31,5 @@ export function provide<T, S extends IState>(
         REGISTRY.set(session, map);
     }
     map.set(resolveKey(token), { factory, lifecycle });
+    SESSIONS.add(session);
 }

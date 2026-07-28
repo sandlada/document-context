@@ -1,9 +1,10 @@
 import { CircularDependencyError, UnknownServiceError } from '../errors';
 import type { ISession, IState } from './internals/session';
 import type { IScopeToken } from './scope';
-import { REGISTRY, SINGLETON_CACHE } from './provide';
+import { REGISTRY, SINGLETON_CACHE, SESSIONS } from './provide';
 
 const CALL_STACK: WeakMap<ISession<any>, Set<unknown>> = new WeakMap();
+const SCOPED_CACHE: WeakMap<ISession<any>, Map<unknown, unknown>> = new WeakMap();
 
 function findSessionWithToken(start: ISession<any>, key: unknown): ISession<any> | undefined {
     const seen = new Set<object>();
@@ -18,8 +19,26 @@ function findSessionWithToken(start: ISession<any>, key: unknown): ISession<any>
     return undefined;
 }
 
+function findProviderGlobal(key: unknown): ISession<any> | undefined {
+    for (const s of SESSIONS) {
+        const m = REGISTRY.get(s);
+        if (m?.has(key)) return s;
+    }
+    return undefined;
+}
+
+function scopedCacheFor(session: ISession<any>): Map<unknown, unknown> {
+    let cache = SCOPED_CACHE.get(session);
+    if (!cache) {
+        cache = new Map();
+        SCOPED_CACHE.set(session, cache);
+    }
+    return cache;
+}
+
 export function inject<T, S extends IState>(session: ISession<S>, token: IScopeToken<T> | string): T {
-    const owner = findSessionWithToken(session, token);
+    let owner = findSessionWithToken(session, token);
+    if (!owner) owner = findProviderGlobal(token);
     if (!owner) throw new UnknownServiceError(`Unknown service token: ${String(token)}`);
 
     let stack = CALL_STACK.get(session);
@@ -47,8 +66,11 @@ export function inject<T, S extends IState>(session: ISession<S>, token: IScopeT
             case 'transient':
                 return entry.factory() as T;
             case 'scoped': {
-                if (entry.value === undefined) entry.value = entry.factory();
-                return entry.value as T;
+                const cache = scopedCacheFor(session);
+                if (!cache.has(token)) {
+                    cache.set(token, entry.factory());
+                }
+                return cache.get(token) as T;
             }
         }
     } finally {

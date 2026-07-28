@@ -152,7 +152,7 @@ describe('provide/inject', () => {
 
     it('scoped shares one instance per session', () => {
         const s1 = mount(document, createContext({}));
-        const s2 = mount(document.body, createContext({}));
+        const s2 = mount(document.createElement('div'), createContext({}));
         const T = defineScope<{ id: number }>('shared');
         let n = 0;
         provide(s1, T, () => ({ id: ++n }), { lifecycle: 'scoped' });
@@ -162,7 +162,7 @@ describe('provide/inject', () => {
 
     it('singleton shares across sessions', () => {
         const s1 = mount(document, createContext({}));
-        const s2 = mount(document.body, createContext({}));
+        const s2 = mount(document.createElement('div'), createContext({}));
         const T = defineScope<{ id: number }>('single');
         provide(s1, T, () => ({ id: 42 }));
         expect(inject(s2, T)).toEqual({ id: 42 });
