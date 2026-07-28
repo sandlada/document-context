@@ -12,10 +12,13 @@ export function loadState<S extends IState>(
     if (raw === null) return;
     try {
         const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') throw new InvalidStoredStateError('not object');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new InvalidStoredStateError('not an object');
+        }
         sessionReplace(session as any, parsed as S);
     } catch (e) {
         if (e instanceof InvalidStoredStateError) return;
-        // Keep silent for corrupt JSON: keep current state (spec requirement).
+        if (e instanceof SyntaxError) return;
+        throw e;
     }
 }
