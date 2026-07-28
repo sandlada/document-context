@@ -130,3 +130,41 @@ describe('subscribeState', () => {
         expect(seen).toEqual([0, 1, 2]);
     });
 });
+
+import { provide, inject } from '../src/core/index';
+
+describe('provide/inject', () => {
+    it('resolves a singleton at the session scope', () => {
+        const s = mount(document, createContext({}));
+        const TOKEN = defineScope<string>('thing');
+        provide(s, TOKEN, () => 'hi');
+        expect(inject(s, TOKEN)).toBe('hi');
+    });
+
+    it('transient returns a new instance each call', () => {
+        const s = mount(document, createContext({}));
+        const T = defineScope<{ id: number }>('inst');
+        let n = 0;
+        provide(s, T, () => ({ id: ++n }), { lifecycle: 'transient' });
+        expect(inject(s, T)).not.toBe(inject(s, T));
+        expect((inject(s, T) as any).id).not.toBe((inject(s, T) as any).id);
+    });
+
+    it('scoped shares one instance per session', () => {
+        const s1 = mount(document, createContext({}));
+        const s2 = mount(document.body, createContext({}));
+        const T = defineScope<{ id: number }>('shared');
+        let n = 0;
+        provide(s1, T, () => ({ id: ++n }), { lifecycle: 'scoped' });
+        expect(inject(s1, T)).toBe(inject(s1, T));
+        expect(inject(s1, T)).not.toBe(inject(s2, T));
+    });
+
+    it('singleton shares across sessions', () => {
+        const s1 = mount(document, createContext({}));
+        const s2 = mount(document.body, createContext({}));
+        const T = defineScope<{ id: number }>('single');
+        provide(s1, T, () => ({ id: 42 }));
+        expect(inject(s2, T)).toEqual({ id: 42 });
+    });
+});

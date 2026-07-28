@@ -6,3 +6,5 @@ export * from './mount';
 export * from './read-state';
 export * from './update-state';
 export * from './subscribe-state';
+export * from './provide';
+export * from './inject';
