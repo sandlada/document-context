@@ -12,3 +12,4 @@ export * from './save-state';
 export * from './load-state';
 export * from './bridge';
 export * from './dispose';
+export * from './error-stream';

@@ -131,7 +131,9 @@ describe('subscribeState', () => {
     });
 });
 
-import { provide, inject } from '../src/core/index';
+import { provide, inject, readErrorStream } from '../src/core/index';
+import { CircularDependencyError, LibraryError } from '../src/errors';
+import type { Subscription } from 'rxjs';
 
 describe('provide/inject', () => {
     it('resolves a singleton at the session scope', () => {
@@ -166,5 +168,29 @@ describe('provide/inject', () => {
         const T = defineScope<{ id: number }>('single');
         provide(s1, T, () => ({ id: 42 }));
         expect(inject(s2, T)).toEqual({ id: 42 });
+    });
+});
+
+describe('inject circular dependency', () => {
+    it('throws with cycle path', () => {
+        const s = mount(document, createContext({}));
+        const A = defineScope<{ b?: any }>('A');
+        const B = defineScope<{ a?: any }>('B');
+        provide(s, A, () => ({ b: inject(s, B) }));
+        expect(() => provide(s, B, () => ({ a: inject(s, A) }))).toThrow(CircularDependencyError);
+    });
+
+    it('errorStream receives the error event', () => {
+        const s = mount(document, createContext({}));
+        const A = defineScope<{ b?: any }>('A1');
+        const B = defineScope<{ a?: any }>('B1');
+        provide(s, A, () => ({ b: inject(s, B) }));
+        const errors: LibraryError[] = [];
+        const sub: Subscription = readErrorStream(s).subscribe((e) => errors.push(e));
+        let caught: unknown;
+        try { provide(s, B, () => ({ a: inject(s, A) })); } catch (e) { caught = e; }
+        sub.unsubscribe();
+        expect(caught).toBeInstanceOf(CircularDependencyError);
+        expect(errors.length).toBeGreaterThan(0);
     });
 });

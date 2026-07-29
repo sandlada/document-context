@@ -1,10 +1,13 @@
 import { CircularDependencyError, UnknownServiceError } from '../errors';
+import { reportError } from './error-stream';
 import type { ISession, IState } from './internals/session';
 import type { IScopeToken } from './scope';
 import { REGISTRY, SINGLETON_CACHE, SESSIONS } from './provide';
 
 const CALL_STACK: WeakMap<ISession<any>, Set<unknown>> = new WeakMap();
 const SCOPED_CACHE: WeakMap<ISession<any>, Map<unknown, unknown>> = new WeakMap();
+
+export { CALL_STACK };
 
 function findSessionWithToken(start: ISession<any>, key: unknown): ISession<any> | undefined {
     const seen = new Set<object>();
@@ -47,7 +50,9 @@ export function inject<T, S extends IState>(session: ISession<S>, token: IScopeT
         CALL_STACK.set(session, stack);
     }
     if (stack.has(token)) {
-        throw new CircularDependencyError(Array.from(stack as any) as unknown as string[]);
+        const err = new CircularDependencyError(Array.from(stack as any) as unknown as string[]);
+        reportError(session as any, err);
+        throw err;
     }
     const map = REGISTRY.get(owner);
     if (!map) throw new UnknownServiceError(`Unknown service token: ${String(token)}`);
