@@ -51,7 +51,8 @@ export function mount<S extends IState>(
         registerBridgeDisposer(session, syncDispose);
     }
     if (typeof Node !== 'undefined' && target instanceof Node) {
-        watchRemoval(target, () => dispose(session));
+        const stopWatching = watchRemoval(target, () => dispose(session));
+        registerBridgeDisposer(session, stopWatching);
     }
     return session;
 }
