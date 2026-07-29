@@ -32,21 +32,28 @@ export function provide<T, S extends IState>(
         map = new Map();
         REGISTRY.set(session, map);
     }
-    map.set(resolveKey(token), { factory, lifecycle });
+    const key = resolveKey(token);
+    map.set(key, { factory, lifecycle });
     SESSIONS.add(session);
 
     // Eager cycle detection — invoke factory once so any recursive inject() call
     // exercises the per-session call stack. The result is discarded; the factory
     // remains stored and will be invoked again on first inject() to actually
     // construct the instance per its lifecycle. UnknownServiceError is tolerated
-    // here because forward references may not have been registered yet.
+    // here because forward references may not have been registered yet. On any
+    // other error (notably CircularDependencyError) the registry entry we just
+    // inserted is rolled back so subsequent inject() calls don't see a failed
+    // provider.
     let stack = CALL_STACK.get(session);
     if (!stack) { stack = new Set(); CALL_STACK.set(session, stack); }
     stack.add(token);
     try {
         factory();
     } catch (e) {
-        if (!(e instanceof UnknownServiceError)) {
+        if (e instanceof UnknownServiceError) {
+            // tolerate: deps may not be registered yet
+        } else {
+            map.delete(key);
             stack.delete(token);
             throw e;
         }
