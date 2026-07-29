@@ -1,6 +1,6 @@
 {
     "author": "Kai Orion",
-    "description": "(For private use.) Inject some configurations and methods into the document.",
+    "description": "For private use. A function-first IoC container hosted on HTML objects.",
     "devDependencies": {
         "typescript": "^7.0.2",
         "happy-dom": "^20.11.1",
@@ -25,8 +25,11 @@
         "private-use",
         "html",
         "document-context",
-        "theme-config",
-        "sandlada"
+        "ioc",
+        "context",
+        "fp",
+        "functional",
+        "html-bridge"
     ],
     "license": "MIT",
     "main": "./build/index.js",
