@@ -340,3 +340,7 @@ updateState(session, { count: 1 });
 - 远程（HTTP）适配器
 - `URL` 状态双向桥接
 - `use(scope).effect(...)` 一类的辅助 helper
+
+## 15. 实现计划
+
+本规格的实现任务拆分与执行记录见 [`docs/superpowers/plans/2026-07-26-document-context-refactor.md`](../../plans/2026-07-26-document-context-refactor.md)。
