@@ -26,7 +26,15 @@ export function withBridge<S extends Record<PropertyKey, any> = Record<PropertyK
 ) => IContextBlueprint<ActualState, ActualServices> {
     return (blueprint) => ({
         ...blueprint,
-        bridges: [...blueprint.bridges, options as IBridgeOptions<any>]
+        bridges: [...blueprint.bridges, options as IBridgeOptions<any>],
+        hooks: [
+            ...blueprint.hooks,
+            {
+                event: 'mount',
+                handler: (session: ISession<any, any>) =>
+                    setupBridge(session.target, session, options as IBridgeOptions<any>)
+            }
+        ]
     })
 }
 

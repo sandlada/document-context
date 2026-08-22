@@ -1,4 +1,5 @@
-import type { IContextBlueprint, IStorageOptions } from '../core/types'
+import type { IContextBlueprint, ISession, IStorageOptions } from '../core/types'
+import { setupStorage } from './sync'
 
 /**
  * Pure blueprint operator to register state persistence and hydration options.
@@ -13,6 +14,14 @@ export function withStorage<S extends Record<PropertyKey, any> = Record<Property
 ) => IContextBlueprint<ActualState, ActualServices> {
     return (blueprint) => ({
         ...blueprint,
-        storage: options as IStorageOptions<any>
+        storage: options as IStorageOptions<any>,
+        hooks: [
+            ...blueprint.hooks,
+            {
+                event: 'mount',
+                handler: (session: ISession<any, any>) =>
+                    setupStorage(session, options as IStorageOptions<any>)
+            }
+        ]
     })
 }

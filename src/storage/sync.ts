@@ -1,6 +1,7 @@
 import { InvalidStorageDataError } from '../core/errors'
 import { getInternalSession } from '../core/session-internal'
 import { update } from '../core/update'
+import { registerMountPlugin } from '../core/mount'
 import type { IStorageOptions, ISession } from '../core/types'
 import {
     deserializeWithMigration,
@@ -216,3 +217,10 @@ export function setupStorage<S extends Record<PropertyKey, any>>(
         }
     }
 }
+
+// Auto-register storage mount plugin
+registerMountPlugin((session) => {
+    if (session.blueprint.storage) {
+        return setupStorage(session, session.blueprint.storage)
+    }
+})

@@ -4,13 +4,30 @@ import {
     createInternalSessionState,
     getElementSession,
     setElementSession,
-    setInternalSession
+    setInternalSession,
+    type IInternalSessionState
 } from './session-internal'
 import type { IContextBlueprint, ISession } from './types'
-import { setupProviderResponder } from '../dom/inject'
-import { trackElementForGC } from '../dom/observer'
-import { setupBridge } from '../bridge/with-bridge'
-import { setupStorage } from '../storage/sync'
+
+export type MountPlugin = (
+    session: ISession<any, any>,
+    internal: IInternalSessionState<any>
+) => void | (() => void) | Promise<void | (() => void)>
+
+const globalMountPlugins: MountPlugin[] = []
+
+/**
+ * Registers a runtime plugin executed during the mount phase.
+ */
+export function registerMountPlugin(plugin: MountPlugin): () => void {
+    globalMountPlugins.push(plugin)
+    return () => {
+        const index = globalMountPlugins.indexOf(plugin)
+        if (index !== -1) {
+            globalMountPlugins.splice(index, 1)
+        }
+    }
+}
 
 /**
  * Mounts a pure blueprint to a physical DOM element, activating the runtime session boundary.
@@ -49,26 +66,25 @@ export function mount<S extends Record<PropertyKey, any>, Services>(
         setInternalSession(session, internal)
         setElementSession(element, session)
 
-        // Track element for zero-leak lifecycle GC
-        trackElementForGC(element, session)
-
-        // Attach storage persistence & hydration if configured
-        if (blueprint.storage) {
-            const removeStorage = setupStorage(session, blueprint.storage)
-            internal.cleanups.push(removeStorage)
+        // Execute registered global mount plugins (bridge, storage, dom observer)
+        for (const plugin of globalMountPlugins) {
+            try {
+                const cleanup = plugin(session, internal)
+                if (typeof cleanup === 'function') {
+                    internal.cleanups.push(cleanup)
+                }
+            } catch (err) {
+                internal.errorSubject.next(
+                    new DocumentContextError({
+                        code: 'MOUNT_PLUGIN_ERROR',
+                        message: err instanceof Error ? err.message : String(err),
+                        details: { error: String(err) }
+                    })
+                )
+            }
         }
 
-        // Attach W3C context-request event responder
-        const removeResponder = setupProviderResponder(element, session)
-        internal.cleanups.push(removeResponder)
-
-        // Activate bidirectional bridges if configured
-        for (const bridgeOptions of blueprint.bridges) {
-            const removeBridge = setupBridge(element, session, bridgeOptions)
-            internal.cleanups.push(removeBridge)
-        }
-
-        // Execute FIFO mount hooks
+        // Execute FIFO mount hooks from blueprint
         const mountHooks = blueprint.hooks.filter((h) => h.event === 'mount')
         for (const hook of mountHooks) {
             try {

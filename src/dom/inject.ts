@@ -5,6 +5,8 @@ import {
     UnknownServiceError
 } from '../core/errors'
 import { getInternalSession } from '../core/session-internal'
+import { registerMountPlugin } from '../core/mount'
+import { trackElementForGC } from './observer'
 import type {
     IServiceRegistration,
     ISession,
@@ -202,6 +204,12 @@ export function setupProviderResponder(
         }
     }
 }
+
+// Auto-register DOM mount plugin
+registerMountPlugin((session) => {
+    trackElementForGC(session.target, session)
+    return setupProviderResponder(session.target, session)
+})
 
 /**
  * Curried synchronous dependency injection verb.
