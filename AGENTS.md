@@ -3,7 +3,6 @@
 This file provides system instructions, architectural invariants, and strict coding conventions for AI agents working on `@sandlada/document-context`.
 
 > **Reference Documents**:
->
 > - **Architecture & Philosophy**: See [`DESIGN.md`](./DESIGN.md) for full design rationale, architectural comparisons, and technical specifications.
 > - **Project Plan & Roadmap**: See [`TASK.md`](./TASK.md) for milestone tasks, task checklists, and execution status.
 
@@ -43,16 +42,16 @@ createContext() ──> pipe(withProvider, withBridge) ────────�
 All operation verbs strictly follow the curried `operation(config)(target)` signature:
 
 ```ts
-import {
-    createContext,
-    withProvider,
-    withBridge,
-    withStorage,
-    mount,
-    select,
-    update,
+import { 
+    createContext, 
+    withProvider, 
+    withBridge, 
+    withStorage, 
+    mount, 
+    select, 
+    update, 
     inject,
-    pipe
+    pipe 
 } from '@sandlada/document-context'
 
 // 1. Pure Lazy Blueprint
@@ -179,3 +178,6 @@ AI agents must strictly adhere to the following rules across all generated and m
     - `strict: true`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`, `noUncheckedSideEffectImports: true`, `verbatimModuleSyntax: true`, `isolatedModules: true`. Target `ES2022`, `moduleResolution: bundler`.
 11. **Build Directory**:
     - Never manually edit or commit files in `build/`.
+
+
+

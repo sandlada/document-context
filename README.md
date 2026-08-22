@@ -3,17 +3,16 @@
 ![npm version](https://img.shields.io/npm/v/@sandlada/document-context?label=NPM%20Version&labelColor=%2300531f&color=%23a3f5aa)
 ![GitHub License](https://img.shields.io/github/license/sandlada/document-context?label=License&labelColor=%2300531f&color=%23a3f5aa)
 
-For private use. A function-first IoC container hosted on HTML objects.
+A lightweight, function-first IoC container and reactive state manager hosted directly on HTML objects and DOM nodes.
 
-## Usage
+---
 
-```ts
-import { createContext, mount, updateState, subscribeState } from '@sandlada/document-context';
+## Installation
 
-const ctx = createContext({ count: 0, label: 'en' });
-const session = mount(document, ctx, {
-    sync: { target: document.documentElement, properties: { count: 'dataset.count', label: 'lang' } },
-});
-subscribeState(session, console.log);
-updateState(session, { count: 1 });
+```bash
+npm install @sandlada/document-context
 ```
+
+## License
+
+MIT
