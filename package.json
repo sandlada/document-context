@@ -3,10 +3,10 @@
     "description": "For private use. A function-first IoC container hosted on HTML objects.",
     "devDependencies": {
         "typescript": "^7.0.2",
-        "happy-dom": "^20.11.1",
+        "happy-dom": "^20.11.6",
         "rxjs": "^7.8.2",
         "tsdown": "^0.22.14",
-        "vitest": "^4.1.10"
+        "vitest": "^4.1.11"
     },
     "engines": {
         "node": ">=22.12.0"
