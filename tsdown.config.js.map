@@ -1,1 +1,0 @@
-{"version":3,"file":"tsdown.config.js","sourceRoot":"","sources":["tsdown.config.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,MAAM,QAAQ,CAAC;AAEtC,eAAe,YAAY,CAAC;IACxB,KAAK,EAAE,CAAC,cAAc,CAAC;IACvB,MAAM,EAAE,CAAC,KAAK,CAAC;IACf,GAAG,EAAE,IAAI;IACT,QAAQ,EAAE,SAAS;IACnB,KAAK,EAAE,IAAI;IACX,MAAM,EAAE,OAAO;CAClB,CAAC,CAAC"}
