@@ -7,7 +7,6 @@ build/
 
 # dependencies
 node_modules/
-package-lock.json
 
 # logs
 npm-debug.log*
@@ -25,3 +24,11 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# AI
+docs/.superpowers
+.superpowers
+.claude
+.jules
+.gemini
+.codex

@@ -1,51 +1,77 @@
 {
+    "name": "@sandlada/document-context",
+    "version": "0.0.1-20260622.a",
+    "description": "A function-first IoC container and reactive state management library hosted on physical DOM elements.",
     "author": "Kai Orion",
-    "description": "For private use. A function-first IoC container hosted on HTML objects.",
-    "devDependencies": {
-        "typescript": "^7.0.2",
-        "happy-dom": "^20.11.6",
-        "rxjs": "^7.8.2",
-        "tsdown": "^0.22.14",
-        "vitest": "^4.1.11"
-    },
-    "engines": {
-        "node": ">=22.12.0"
-    },
+    "license": "MIT",
+    "type": "module",
+    "main": "./build/index.js",
+    "types": "./build/index.d.ts",
     "exports": {
         ".": {
             "import": "./build/index.js",
             "types": "./build/index.d.ts"
+        },
+        "./core": {
+            "import": "./build/core/index.js",
+            "types": "./build/core/index.d.ts"
+        },
+        "./bridge": {
+            "import": "./build/bridge/index.js",
+            "types": "./build/bridge/index.d.ts"
+        },
+        "./storage": {
+            "import": "./build/storage/index.js",
+            "types": "./build/storage/index.d.ts"
+        },
+        "./dom": {
+            "import": "./build/dom/index.js",
+            "types": "./build/dom/index.d.ts"
+        },
+        "./signals": {
+            "import": "./build/signals/index.js",
+            "types": "./build/signals/index.d.ts"
         }
     },
     "files": [
         "build"
     ],
-    "homepage": "https://github.com/sandlada/document-context#readme",
+    "scripts": {
+        "build": "tsdown",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "typecheck": "tsc --noEmit",
+        "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
+        "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
+    },
     "keywords": [
-        "private-use",
         "html",
         "document-context",
         "ioc",
         "context",
         "fp",
         "functional",
-        "html-bridge"
+        "html-bridge",
+        "reactive",
+        "state-management",
+        "web-components"
     ],
-    "license": "MIT",
-    "main": "./build/index.js",
-    "name": "@sandlada/document-context",
-    "publishConfig": {
-        "access": "public"
-    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/sandlada/document-context.git"
     },
-    "scripts": {
-        "build": "tsdown",
-        "test": "vitest"
+    "homepage": "https://github.com/sandlada/document-context#readme",
+    "publishConfig": {
+        "access": "public"
     },
-    "type": "module",
-    "types": "./build/index.d.ts",
-    "version": "0.0.1-20260622.a"
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "devDependencies": {
+        "happy-dom": "^20.11.6",
+        "rxjs": "^7.8.2",
+        "tsdown": "^0.22.14",
+        "typescript": "^7.0.2",
+        "vitest": "^4.1.11"
+    }
 }

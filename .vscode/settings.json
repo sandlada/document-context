@@ -1,3 +1,30 @@
 {
-    "typescript.native-preview.tsdk": "node_modules\\@typescript\\native-preview"
+    "editor.codeActionsOnSave": {
+        "source.fixAll.markdownlint": "always",
+        "source.organizeImports": "always",
+        "source.organizeLinkDefinitions": "always",
+        "source.removeUnusedImports": "always",
+        "source.sort.json": "always",
+        "source.sortImports": "always"
+    },
+    "editor.formatOnSave": true,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "explorer.compactFolders": true,
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+        "*.js": "${capture}.js.map, ${capture}.min.js, ${capture}.d.ts",
+        "*.ts": "${capture}.js, ${capture}.test.ts",
+        "AGENTS.md": "CLAUDE.md, AGENTS.md",
+        "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, bun.lock",
+        "README.md": "SECURITY.md, CODE_OF_CONDUCT.md, LICENSE, .gitignore, .editorconfig",
+        "tsconfig.json": "tsconfig.*.json"
+    },
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "files.encoding": "utf8",
+    "files.eol": "\n",
+    "js/ts.experimental.useTsgo": true,
+    "js/ts.format.semicolons": "remove",
+    "js/ts.tsdk.path": "./node_modules/typescript/lib"
 }
