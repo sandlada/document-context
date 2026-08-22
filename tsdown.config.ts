@@ -10,9 +10,13 @@ export default defineConfig({
         'src/signals/index.ts'
     ],
     format: ['esm'],
-    dts: true,
+    dts: {
+        sourcemap: true
+    },
+    sourcemap: true,
     platform: 'browser',
     clean: true,
     outDir: 'build',
-    tsconfig: 'tsconfig.build.json'
+    tsconfig: 'tsconfig.build.json',
+    unbundle: true
 })

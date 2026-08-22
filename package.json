@@ -1,41 +1,70 @@
 {
     "name": "@sandlada/document-context",
-    "version": "0.0.1-20260622.a",
-    "description": "A function-first IoC container and reactive state management library hosted on physical DOM elements.",
+    "version": "0.0.1-20260822.a",
+    "description": "A function-first, DOM-anchored IoC container and reactive state management library for modern browsers, Astro, Web Components, and micro-frontends.",
     "author": "Kai Orion",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sandlada/document-context.git"
+    },
+    "homepage": "https://github.com/sandlada/document-context#readme",
+    "keywords": [
+        "html",
+        "document-context",
+        "ioc",
+        "inversion-of-control",
+        "dependency-injection",
+        "state-management",
+        "reactive",
+        "signals",
+        "tc39-signals",
+        "w3c-context-protocol",
+        "context-protocol",
+        "web-components",
+        "custom-elements",
+        "astro",
+        "islands-architecture",
+        "micro-frontends",
+        "bidirectional-bridge",
+        "dom-state",
+        "functional",
+        "curried"
+    ],
     "type": "module",
     "main": "./build/index.js",
     "types": "./build/index.d.ts",
-    "exports": {
-        ".": {
-            "import": "./build/index.js",
-            "types": "./build/index.d.ts"
-        },
-        "./core": {
-            "import": "./build/core/index.js",
-            "types": "./build/core/index.d.ts"
-        },
-        "./bridge": {
-            "import": "./build/bridge/index.js",
-            "types": "./build/bridge/index.d.ts"
-        },
-        "./storage": {
-            "import": "./build/storage/index.js",
-            "types": "./build/storage/index.d.ts"
-        },
-        "./dom": {
-            "import": "./build/dom/index.js",
-            "types": "./build/dom/index.d.ts"
-        },
-        "./signals": {
-            "import": "./build/signals/index.js",
-            "types": "./build/signals/index.d.ts"
-        }
-    },
+    "sideEffects": false,
     "files": [
         "build"
     ],
+    "exports": {
+        ".": {
+            "types": "./build/index.d.ts",
+            "import": "./build/index.js"
+        },
+        "./core": {
+            "types": "./build/core/index.d.ts",
+            "import": "./build/core/index.js"
+        },
+        "./bridge": {
+            "types": "./build/bridge/index.d.ts",
+            "import": "./build/bridge/index.js"
+        },
+        "./storage": {
+            "types": "./build/storage/index.d.ts",
+            "import": "./build/storage/index.js"
+        },
+        "./dom": {
+            "types": "./build/dom/index.d.ts",
+            "import": "./build/dom/index.js"
+        },
+        "./signals": {
+            "types": "./build/signals/index.d.ts",
+            "import": "./build/signals/index.js"
+        },
+        "./package.json": "./package.json"
+    },
     "scripts": {
         "build": "tsdown",
         "test": "vitest run",
@@ -44,34 +73,26 @@
         "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
         "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
     },
-    "keywords": [
-        "html",
-        "document-context",
-        "ioc",
-        "context",
-        "fp",
-        "functional",
-        "html-bridge",
-        "reactive",
-        "state-management",
-        "web-components"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/sandlada/document-context.git"
-    },
-    "homepage": "https://github.com/sandlada/document-context#readme",
-    "publishConfig": {
-        "access": "public"
-    },
-    "engines": {
-        "node": ">=22.12.0"
-    },
+    "dependencies": {},
     "devDependencies": {
         "happy-dom": "^20.11.6",
         "rxjs": "^7.8.2",
         "tsdown": "^0.22.14",
         "typescript": "^7.0.2",
         "vitest": "^4.1.11"
+    },
+    "peerDependencies": {
+        "rxjs": ">=7.0.0"
+    },
+    "peerDependenciesMeta": {
+        "rxjs": {
+            "optional": true
+        }
+    },
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }
