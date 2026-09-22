@@ -184,13 +184,17 @@ the dashboard offers when a repository is connected; there is no deployment job 
 | --- | --- |
 | Project name | `document-context` (must match `name` in `wrangler.jsonc`) |
 | Production branch | `main` |
-| Build command | `cd site && npm ci && npm run build` |
+| Build command | `cd site && npm ci && npm run verify` |
 | Deploy command | `cd site && npx wrangler deploy` |
 | Environment variable | `NODE_VERSION=26` (Astro requires Node >= 22.12) |
 | Custom domain | `document-context.sandlada.com` |
 
 The `cd site` prefix in both commands keeps them independent of any root-directory setting. If the
 project is instead configured with `site` as its root directory, drop the prefix.
+`npm run verify` already ends with `astro build` plus `verify:seo`, so no trailing `npm run build`
+is needed. Do not drop `npm ci` from the build command: Cloudflare's automatic
+`npm clean-install` runs at the repository root and does not install `site/` dependencies —
+without it `check:snippets` fails on `astro/tsconfigs/strict not found`.
 
 `npx wrangler deploy --dry-run --config site/wrangler.jsonc` validates the configuration locally
 without authenticating, including that the assets directory resolves.
