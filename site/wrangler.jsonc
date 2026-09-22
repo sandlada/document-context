@@ -1,0 +1,14 @@
+// Cloudflare Worker that serves the published documentation.
+//
+// The documentation is a static Astro build, so this Worker has no script of its own:
+// it only uploads `dist/` as static assets. The name has to match the name of the
+// Workers project so that `npx wrangler deploy` publishes to it.
+{
+    "name": "document-context",
+    "compatibility_date": "2026-09-20",
+    "assets": {
+        "directory": "./dist",
+        // Serve the 404 page that Astro generates instead of Cloudflare's default.
+        "not_found_handling": "404-page"
+    }
+}

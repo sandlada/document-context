@@ -1,0 +1,31 @@
+# Build output
+dist/
+
+# Generated types
+.astro/
+
+# Dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+
+# Environment variables
+.env
+.env.production
+
+# macOS-specific files
+.DS_Store
+
+# TypeDoc output for the current documentation version. Archived copies live in
+# `src/content/docs/<version>/api/` and are committed so that each published
+# version keeps the API reference it shipped with.
+src/content/docs/api/
+
+# Generated copies of the narrative guides (docs/*.md)
+src/content/docs/core-concepts.md
+src/content/docs/lifecycles.md
+src/content/docs/w3c-protocol.md
+
+# Generated copies of the module READMEs (src/<module>/README.md)
+src/content/docs/specs/

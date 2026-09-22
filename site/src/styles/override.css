@@ -1,0 +1,206 @@
+.sl-container {
+
+    h1#_top {
+        font-weight: 900;
+        font-size: 56px;
+        line-height: 1.6;
+        text-transform: uppercase;
+    }
+
+}
+
+.content-panel {
+
+    border-top: none;
+
+    .sl-container {
+        .sl-markdown-content {
+            --sl-color-hairline: hsl(0, 0%, 50%);
+            hr {
+                margin: 48px 0px;
+            }
+
+            .sl-heading-wrapper {
+
+                h2,
+                &.level-h2 {
+                    font-weight: 700;
+                    font-size: 48px;
+                    margin: 48px 0px;
+                }
+
+                h3,
+                &.level-h3 {
+                    font-weight: 500;
+                    font-size: 40px;
+                    margin: 40px 0px;
+                }
+
+                h4,
+                &.level-h4 {
+                    font-weight: 400;
+                    font-size: 32px;
+                    margin: 40px 0px;
+                }
+
+            }
+        }
+    }
+}
+
+a {
+    text-underline-offset: 1px;
+
+    transition-duration: 200ms;
+    transition-property: text-underline-offset;
+
+    &:hover {
+        text-underline-offset: 4px;
+    }
+
+    &:active,
+    &:focus-within {
+        text-underline-offset: 2px;
+    }
+}
+
+header.header {
+    --sl-nav-height: 50px;
+    background: transparent;
+    border-bottom: none;
+    box-sizing: border-box;
+    position: sticky;
+    top: 0;
+    margin: 0px;
+    background: var(--sl-color-black);
+
+    transition-property: max-width, width, margin, top;
+    transition-behavior: allow-discrete;
+    transition-duration: 200ms;
+
+    &.collapsed {
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            opacity: 0.38;
+            border-radius: inherit;
+            background: linear-gradient(to top, transparent, color-mix(in srgb, var(--md-sys-color-primary-container) 25%, transparent));
+        }
+    }
+
+
+
+    & .title-wrapper * {
+        font-size: 16px;
+        font-weight: 900;
+        color: var(--sl-color-white);
+    }
+
+    & site-search button {
+        height: 32px;
+
+        & span {
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        & > kbd {
+            display: flex;
+            place-content: center;
+            gap: 4px;
+            box-sizing: border-box;
+            padding-block: 2px;
+
+            & > kbd {
+                box-sizing: border-box;
+                font-size: 12px;
+                line-height: 1;
+            }
+        }
+    }
+
+    & .right-group {
+        & starlight-theme-select,
+        & starlight-version-select {
+            & * {
+                font-size: 12px;
+                line-height: 1;
+            }
+
+            & select {
+                width: fit-content;
+                max-width: 96px;
+            }
+        }
+
+        & .sl-flex.social-icons::after {
+            visibility: hidden;
+        }
+    }
+}
+
+aside.right-sidebar-container .right-sidebar {
+    background: var(--sl-color-black);
+    position: sticky;
+    top: 0px;
+    border: none;
+    z-index: 1;
+    & nav {
+        border: none;
+        top: 50px;
+        background: var(--sl-color-black);
+    }
+
+    & .dropdown {
+        background: var(--md-sys-color-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
+    }
+}
+
+ul.top-level:has(details) {
+    a[aria-current="page"] span {
+        background: var(--md-sys-color-primary);
+        color: var(--md-sys-color-on-primary);
+    }
+    li {
+        margin-top: 4px;
+    }
+    li,
+    a {
+        background: transparent;
+        padding: 0;
+    }
+    a, span {
+        display: flex;
+        height: 100%;
+    }
+    a span {
+        height: 100%;
+        width: fit-content;
+        border-radius: 999px;
+        padding-inline: 12px;
+        padding-block: 4px;
+
+    }
+    a:not([aria-current="page"]):hover span {
+        background: color-mix(in srgb, var(--md-sys-color-surface-variant) 38%, transparent);
+    }
+}
+
+starlight-toc {
+    a[aria-current="true"] {
+        color: var(--md-sys-color-primary);
+    }
+}
+
+.main-frame {
+}
+
+sl-sidebar-pane {
+    border-inline-end: none;
+}
+.right-sidebar {
+    border-inline-start: none;
+}

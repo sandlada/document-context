@@ -1,0 +1,36 @@
+{
+    "name": "@sandlada/document-context-docs",
+    "private": true,
+    "type": "module",
+    "description": "Documentation site for @sandlada/document-context, built with Astro Starlight.",
+    "scripts": {
+        "sync": "node scripts/sync-content.mjs",
+        "dev": "astro dev",
+        "build": "astro build && npm run verify:seo",
+        "preview": "astro preview",
+        "check": "astro check",
+        "check:snippets": "tsc --project tsconfig.snippets.json",
+        "verify:seo": "node scripts/verify-seo.mjs",
+        "verify": "npm run check:snippets && npm run check && npm run build",
+        "generate:icons": "node scripts/generate-icons.mjs",
+        "version:new": "node scripts/new-version.mjs"
+    },
+    "devDependencies": {
+        "@astrojs/check": "^0.9.10",
+        "@astrojs/mdx": "^8.0.1",
+        "@astrojs/sitemap": "^3.7.4",
+        "@astrojs/starlight": "^0.42.2",
+        "astro": "^7.3.3",
+        "sharp": "^0.35.4",
+        "starlight-links-validator": "^0.26.0",
+        "starlight-typedoc": "^0.23.1",
+        "starlight-versions": "^0.10.1",
+        "typedoc": "^0.28.20",
+        "typedoc-plugin-markdown": "^4.13.1",
+        "typescript": "^6.0.3"
+    },
+    "dependencies": {
+        "@fontsource-variable/google-sans-code": "^5.3.1",
+        "@sandlada/material-design-css": "^3.0.0-20260611.b"
+    }
+}

@@ -1,0 +1,7 @@
+# All pages are crawlable. Archived documentation versions and the 404 page
+# carry a `noindex` robots meta tag instead of being blocked here, so crawlers
+# can read the directive.
+User-agent: *
+Allow: /
+
+Sitemap: https://document-context.sandlada.com/sitemap-index.xml

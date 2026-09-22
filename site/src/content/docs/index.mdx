@@ -1,0 +1,86 @@
+---
+title: Document Context for the DOM
+description: Function-first IoC and reactive state anchored to DOM nodes, for Astro, Web Components and micro-frontends.
+hero:
+  tagline: Physical DOM nesting is the scope hierarchy — no virtual container trees, no leaked listeners.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: API reference
+      link: /api/
+      icon: external
+      variant: minimal
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+`@sandlada/document-context` is a function-first IoC container and reactive state library hosted on
+`HTMLElement` and physical DOM nodes. Independent bundles — Astro islands, micro-frontends, Web
+Components — share services and state through the DOM tree itself, using the W3C Context Protocol.
+
+<CardGrid stagger>
+    <LinkCard
+        title="Getting started"
+        href="/getting-started/"
+        description="Install the package and mount your first DOM-anchored session."
+    />
+    <LinkCard
+        title="Core concepts"
+        href="/core-concepts/"
+        description="The two-phase blueprint model and data-last curried verbs."
+    />
+    <LinkCard
+        title="API reference"
+        href="/api/"
+        description="Every export of the published subpaths, generated from the source JSDoc."
+    />
+    <LinkCard
+        title="W3C protocol"
+        href="/w3c-protocol/"
+        description="How inject requests cross Shadow DOM and bundle boundaries."
+    />
+</CardGrid>
+
+## Why anchor to the DOM?
+
+- **Space is scope.** Resolving a dependency walks up `parentElement`, so nested UI naturally inherits parent services with no manual child containers.
+- **Zero-leak by construction.** Sessions live and die with their host node; disconnects are confirmed in a microtask and subscriptions are torn down automatically.
+- **State is the view.** `withBridge` projects reactive state onto `dataset`, `style`, `aria-*`, and form values with loop guards and cursor preservation.
+- **One bus for every framework.** React, Vue, Svelte, and vanilla scripts meet at native `HTMLElement` and `context-request` events — no shared heap reference required.
+
+## A complete example
+
+```ts
+import { createContext, pipe, withBridge, withStorage, mount, update } from '@sandlada/document-context'
+
+const themeBlueprint = pipe(
+    createContext({ isDark: false }),
+    withBridge({ properties: { isDark: 'dataset.themeDark' } }),
+    withStorage({ adapter: 'localStorage', key: 'app-theme' })
+)
+
+const session = mount(themeBlueprint)(document.documentElement)
+const toggle = update<{ isDark: boolean }>((s) => ({ isDark: !s.isDark }))
+toggle(session)
+```
+
+`isDark` flows to `data-theme-dark`, persists across reloads, and any island holding the session — or a
+child node resolving through it — sees the same state.
+
+## What ships
+
+- **5 focused subpaths** — `core`, `bridge`, `storage`, `dom`, `signals`, so tree-shaking stays total.
+- **Two-phase purity** — Phase 1 blueprint composition has zero DOM, zero I/O, zero listeners.
+- **W3C-native DI** — `inject`, `injectAsync`, `injectAll` over composed `context-request` events.
+- **Four-dimension lifecycles** — DOM host, session machine, services, and state/bridge/storage coordinated.
+
+## Install
+
+```bash
+npm i @sandlada/document-context
+```
+
+:::caution[ESM only]
+The package cannot be loaded with `require()`. Your project must use ESM (`import`) or dynamic `import()`.
+:::

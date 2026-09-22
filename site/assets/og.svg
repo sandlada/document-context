@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+    <defs>
+        <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#00531f" />
+            <stop offset="1" stop-color="#002f16" />
+        </linearGradient>
+    </defs>
+
+    <rect width="1200" height="630" fill="url(#background)" />
+
+    <!-- Nested scopes: the physical DOM tree doubles as the IoC hierarchy. -->
+    <path d="M0 522 H1200" stroke="#a3f5aa" stroke-opacity="0.22" stroke-width="3" />
+    <path d="M0 566 H1200" stroke="#a3f5aa" stroke-opacity="0.1" stroke-width="3" />
+
+    <rect x="80" y="72" width="104" height="104" rx="24" fill="#a3f5aa" />
+    <path
+        d="M108 124.5 124 140.5 157 107.5"
+        fill="none"
+        stroke="#00531f"
+        stroke-width="11"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    />
+
+    <text
+        x="80"
+        y="300"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="72"
+        font-weight="700"
+        fill="#a3f5aa"
+    >@sandlada/document-context</text>
+
+    <text
+        x="80"
+        y="384"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="44"
+        font-weight="600"
+        fill="#eaf7ec"
+    >DOM-Anchored IoC Container and</text>
+
+    <text
+        x="80"
+        y="442"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="44"
+        font-weight="600"
+        fill="#eaf7ec"
+    >Reactive State Management</text>
+
+    <text
+        x="80"
+        y="494"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="34"
+        fill="#8fd39b"
+    >for browsers &#8212; state lives on the DOM</text>
+
+    <text
+        x="80"
+        y="606"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="32"
+        font-weight="600"
+        fill="#a3f5aa"
+    >document-context.sandlada.com</text>
+
+    <text
+        x="1120"
+        y="606"
+        text-anchor="end"
+        font-family="Segoe UI, Arial, Helvetica, sans-serif"
+        font-size="32"
+        fill="#8fd39b"
+    >npm i @sandlada/document-context</text>
+</svg>
