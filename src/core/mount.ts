@@ -9,6 +9,19 @@ import {
 } from './session-internal'
 import type { IContextBlueprint, ISession } from './types'
 
+/**
+ * Runtime plugin invoked once per `mount()` call, after the session handle is
+ * cached but before blueprint `mount` hooks run.
+ *
+ * A plugin may return a zero-argument cleanup (synchronous or promise-like)
+ * that is pushed onto the session dispose stack and executed LIFO at
+ * `dispose()` time. The built-in bridge, storage, and DOM-responder plugins
+ * are all registered through this mechanism.
+ *
+ * @param session - Freshly created live session.
+ * @param internal - Internal mutable state (subjects, caches, flags).
+ * @returns An optional cleanup, or a promise of one.
+ */
 export type MountPlugin = (
     session: ISession<any, any>,
     internal: IInternalSessionState<any>
@@ -17,7 +30,26 @@ export type MountPlugin = (
 const globalMountPlugins: MountPlugin[] = []
 
 /**
- * Registers a runtime plugin executed during the mount phase.
+ * Registers a global runtime plugin executed during every `mount()`.
+ *
+ * Plugins run in registration order on each mount. Synchronous throws are
+ * caught and routed to the session error stream as `MOUNT_PLUGIN_ERROR`, so
+ * one failing plugin never prevents the session from mounting.
+ *
+ * @param plugin - Plugin callback; see {@link MountPlugin}.
+ * @returns An unregister function that removes this exact plugin reference.
+ * Calling it twice is safe (second call is a no-op).
+ *
+ * @example
+ * ```ts
+ * import { registerMountPlugin } from '@sandlada/document-context'
+ *
+ * const unregister = registerMountPlugin((session) => {
+ *     console.log('mounted on', session.target)
+ *     return () => console.log('disposed')
+ * })
+ * unregister()
+ * ```
  */
 export function registerMountPlugin(plugin: MountPlugin): () => void {
     globalMountPlugins.push(plugin)
@@ -30,10 +62,35 @@ export function registerMountPlugin(plugin: MountPlugin): () => void {
 }
 
 /**
- * Mounts a pure blueprint to a physical DOM element, activating the runtime session boundary.
+ * Mounts a pure blueprint onto a physical host element (Phase 2 execution
+ * boundary), activating the runtime session.
  *
- * @param blueprint The immutable blueprint definition.
- * @returns A curried function accepting the host HTMLElement.
+ * Idempotent per element: mounting the same `HTMLElement` twice returns the
+ * existing non-disposed session instead of creating a second one. On a fresh
+ * mount the pipeline is: create internal state (BehaviorSubject seeded from
+ * `blueprint.initialState`) → cache session in both WeakMaps → run global
+ * mount plugins in order → run blueprint `mount` hooks FIFO (promise cleanups
+ * are attached when they settle) → dispatch a bubbling, composed
+ * `context-mount` CustomEvent with `detail: { session }`.
+ *
+ * Plugin and hook throws never propagate; they are routed to the session
+ * error stream as `MOUNT_PLUGIN_ERROR` / `MOUNT_HOOK_ERROR`.
+ *
+ * @param blueprint - Immutable Phase 1 blueprint definition.
+ * @returns A curried function accepting the host `HTMLElement` and returning
+ * the live `ISession`. The same element returns the same session until it is
+ * disposed.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, select } from '@sandlada/document-context'
+ *
+ * const blueprint = createContext({ count: 0 })
+ * const mountCounter = mount(blueprint)
+ * const session = mountCounter(document.getElementById('counter')!)
+ * const getCount = select((s: { count: number }) => s.count)
+ * console.log(getCount(session))
+ * ```
  */
 export function mount<S extends Record<PropertyKey, any>, Services>(
     blueprint: IContextBlueprint<S, Services>

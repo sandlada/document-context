@@ -92,6 +92,55 @@ Another independent consumer component subscribes to reactive state changes or r
 </script>
 ```
 
+### 4. Handling Boolean Attributes & Custom Toggles (`disabled`, `isDark`)
+
+HTML boolean attributes (such as `disabled`, `checked`, `readOnly`, and `hidden`) are considered `true` whenever the attribute exists on an element, regardless of its string value, and `false` only when the attribute is completely removed. `withBridge` handles this out of the box to avoid the invalid `disabled="false"` trap:
+
+- **Native HTML Boolean Attributes (`disabled`, `checked`, `readOnly`, `hidden`)**:
+  - `true` ➔ sets `element.disabled = true` and `element.setAttribute('disabled', '')`.
+  - `false` ➔ sets `element.disabled = false` and removes the attribute via `element.removeAttribute('disabled')`.
+- **Custom Boolean Attributes (e.g., `<html dark>`)**:
+  - Use `transform: (isDark) => (isDark ? '' : null)` to add `<el dark>` when true, or completely remove the attribute when false (returning `null` triggers `removeAttribute`).
+- **Semantic Dataset Theme (`data-theme="dark"`)**:
+  - Map boolean flags to CSS theme selectors via `dataset.theme`.
+
+```html
+<script is:inline type="module">
+    import { createContext, pipe, withBridge, mount } from '@sandlada/document-context'
+
+    const appBlueprint = pipe(
+        createContext({
+            isDisabled: false,
+            isDark: false
+        }),
+        withBridge({
+            properties: {
+                // 1. Native HTML boolean attribute: auto setAttribute('') / removeAttribute
+                isDisabled: 'disabled',
+
+                // 2. Custom boolean attribute: presence-based toggle (<html dark> vs <html>)
+                isDark: {
+                    target: 'dark',
+                    transform: (isDark) => (isDark ? '' : null),
+                    parse: (val) => val !== null
+                },
+
+                // 3. Or semantic dataset: data-theme="dark" vs data-theme="light"
+                /*
+                isDark: {
+                    target: 'dataset.theme',
+                    transform: (isDark) => (isDark ? 'dark' : 'light'),
+                    parse: (theme) => theme === 'dark'
+                }
+                */
+            }
+        })
+    )
+
+    const session = mount(appBlueprint)(document.documentElement)
+</script>
+```
+
 ---
 
 ## API Reference

@@ -1,11 +1,29 @@
 import { validatePropertyPath } from './sanitize'
 
 /**
- * Reads a property or attribute from a DOM element using a dot-path.
+ * Reads a value from a host element through a bridge dot-path.
  *
- * @param element The target HTMLElement.
- * @param path The property dot-path.
- * @returns The extracted DOM value.
+ * Supported grammars, in precedence order: `dataset.*` (string or
+ * `undefined`), `style.*` including `style.--*` custom properties,
+ * `aria-*` attributes, `elementInternals.value | elementInternals.state`
+ * (falls back to `.value`), `hidden` (attribute-or-property boolean), any
+ * native property present via `in`, and finally a plain attribute fallback.
+ * Every path is validated first; dangerous segments throw
+ * `PropertySyncSecurityError`.
+ *
+ * @param element - Host element to read from.
+ * @param path - Bridge dot-path (for example `'dataset.count'`).
+ * @returns The extracted DOM value, or `null` / `undefined` when absent.
+ * @throws {PropertySyncSecurityError} On prototype-pollution or XSS-sink paths.
+ *
+ * @example
+ * ```ts
+ * import { readDomProperty } from '@sandlada/document-context'
+ *
+ * readDomProperty(el, 'dataset.count')
+ * readDomProperty(el, 'style.--accent')
+ * readDomProperty(input, 'value')
+ * ```
  */
 export function readDomProperty(element: HTMLElement, path: string): any {
     validatePropertyPath(path, element)
@@ -48,11 +66,31 @@ export function readDomProperty(element: HTMLElement, path: string): any {
 }
 
 /**
- * Writes a state value to a DOM element property or attribute using a dot-path.
+ * Writes a state value onto a host element through a bridge dot-path.
  *
- * @param element The target HTMLElement.
- * @param path The property dot-path.
- * @param value The value to apply.
+ * Mirrors `readDomProperty` grammars with DOM-appropriate null handling:
+ * `null` / `undefined` deletes `dataset.*` entries, removes `style.--*` and
+ * `aria-*` / plain attributes, and clears `value` and style properties to
+ * `''`. Booleans for `checked | disabled | readOnly` set both the IDL
+ * property and the content attribute; `hidden` toggles both together.
+ * Native properties win over attributes when the path exists via `in`.
+ * Every path is validated first; dangerous segments throw
+ * `PropertySyncSecurityError` before any write.
+ *
+ * @param element - Host element to write to.
+ * @param path - Bridge dot-path (for example `'dataset.count'`).
+ * @param value - State value to apply; `null` / `undefined` clears.
+ * @returns `void`.
+ * @throws {PropertySyncSecurityError} On prototype-pollution or XSS-sink paths.
+ *
+ * @example
+ * ```ts
+ * import { writeDomProperty } from '@sandlada/document-context'
+ *
+ * writeDomProperty(el, 'dataset.count', 3)
+ * writeDomProperty(el, 'aria-pressed', true)
+ * writeDomProperty(el, 'dataset.count', null)
+ * ```
  */
 export function writeDomProperty(
     element: HTMLElement,

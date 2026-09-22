@@ -7,9 +7,32 @@ import {
 import type { ISession } from './types'
 
 /**
- * Disposes a mounted session, releases subscriptions, aborts signals, and cleans up resources in LIFO order.
+ * Tears down a mounted session and releases every resource it owns.
  *
- * @param session The active ISession to tear down.
+ * Idempotent: disposing twice (or disposing a session with no internals) is a
+ * safe no-op. The pipeline is: mark `isDisposed` and drop the element mapping
+ * → `abortController.abort()` (cancelling `session.abortSignal` consumers) →
+ * run blueprint `dispose` hooks LIFO → run mount/plugin cleanups LIFO →
+ * dispatch a bubbling, composed `context-dispose` CustomEvent with
+ * `detail: { sessionKey }`. Synchronous throws and async rejections inside
+ * hooks or cleanups are caught and routed to the session error stream as
+ * `DISPOSE_HOOK_ERROR` / `MOUNT_CLEANUP_ERROR` instead of propagating.
+ *
+ * After disposal, `update()` returns `false`, `subscribe()` returns an empty
+ * unsubscribe, and `session.isDisposed` stays `true` permanently.
+ *
+ * @param session - Active `ISession` to tear down.
+ * @returns `void`. No value, no promise; async cleanups settle in the
+ * background.
+ *
+ * @example
+ * ```ts
+ * import { dispose, update } from '@sandlada/document-context'
+ *
+ * dispose(session)
+ * console.log(session.isDisposed)
+ * update({ count: 1 })(session) // false, silent no-op
+ * ```
  */
 export function dispose<S extends Record<PropertyKey, any>, Services>(
     session: ISession<S, Services>
@@ -103,10 +126,30 @@ export function dispose<S extends Record<PropertyKey, any>, Services>(
 }
 
 /**
- * Returns an Observable stream of non-fatal runtime errors associated with the session.
+ * Returns the non-fatal runtime error stream for a session.
  *
- * @param session The ISession instance.
- * @returns Observable of DocumentContextError.
+ * The stream is a `ReplaySubject<DocumentContextError>(20)` held on session
+ * internals, so late subscribers replay up to the last 20 errors. Sources
+ * include mount plugin/hook failures, dispose cleanup failures, storage parse
+ * failures, and bridge errors. Fatal DI throws (`UnknownServiceError`,
+ * `CircularDependencyError`) still throw synchronously at the call site and
+ * are not duplicated here.
+ *
+ * Exposes only the `Observable` interface; the underlying subject stays
+ * encapsulated and RxJS never leaks into the public API beyond this type.
+ *
+ * @param session - `ISession` whose errors should be observed.
+ * @returns An `Observable<DocumentContextError>`. Sessions with no internals
+ * yield `EMPTY` (completes immediately, emits nothing).
+ *
+ * @example
+ * ```ts
+ * import { readErrorStream } from '@sandlada/document-context'
+ *
+ * const sub = readErrorStream(session).subscribe((err) => {
+ *     console.error(`[${err.code}]`, err.message, err.resolutionGuide)
+ * })
+ * ```
  */
 export function readErrorStream<S extends Record<PropertyKey, any>, Services>(
     session: ISession<S, Services>

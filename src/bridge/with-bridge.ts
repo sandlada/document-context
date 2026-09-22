@@ -14,10 +14,33 @@ import {
 import { readDomProperty, writeDomProperty } from './property-path'
 
 /**
- * Pure blueprint operator to register bidirectional DOM property bridge options.
+ * Pure Phase 1 operator that registers one bidirectional DOM bridge.
  *
- * @param options Bridge configuration options.
- * @returns A higher-order blueprint transformer function.
+ * Appends `options` to `blueprint.bridges` and adds a `mount` hook that calls
+ * `setupBridge(session.target, session, options)` at mount time. Multiple
+ * `withBridge()` calls accumulate in order; each activates its own
+ * subscription and listeners. The operator itself is side-effect free.
+ *
+ * @param options - Bridge bindings; see {@link IBridgeOptions}. Only listed
+ * state keys synchronize; `events` defaults to `['input', 'change']` and
+ * `batch` defaults to microtask coalescing.
+ * @returns A blueprint transformer preserving state and service types.
+ *
+ * @example
+ * ```ts
+ * import { withBridge, parseNumber } from '@sandlada/document-context'
+ *
+ * const blueprint = pipe(
+ *     createContext({ count: 0, query: '' }),
+ *     withBridge({
+ *         properties: {
+ *             count: { target: 'dataset.count', parse: parseNumber },
+ *             query: 'value'
+ *         },
+ *         events: ['input']
+ *     })
+ * )
+ * ```
  */
 export function withBridge<S extends Record<PropertyKey, any> = Record<PropertyKey, any>, Services = {}>(
     options: IBridgeOptions<S>
@@ -39,12 +62,30 @@ export function withBridge<S extends Record<PropertyKey, any> = Record<PropertyK
 }
 
 /**
- * Activates the bidirectional bridge on a mounted host element.
+ * Activates one bidirectional bridge on an already-mounted host element.
  *
- * @param element The host HTMLElement.
- * @param session The active ISession.
- * @param bridgeOptions The bridge options.
- * @returns Cleanup function.
+ * Normally invoked by the `withBridge` mount hook, not by hand. The pipeline
+ * is: initial state-to-DOM sync inside a `writeWithTransaction` lock →
+ * reactive state-to-DOM subscription (coalesced via `queueMicrotask` unless
+ * `batch === false`, with `value` paths written through
+ * `safeWriteValueWithCursor`) → DOM-to-state listener on each `events` entry
+ * that re-reads every bound path, diffs with `Object.is`, and pushes changes
+ * via `update()`. Internal (transaction-locked) writes are ignored on the way
+ * back, breaking echo loops; disposed sessions stop syncing.
+ *
+ * @param element - Mounted host element (bridge endpoint).
+ * @param session - Live session supplying state and disposal status.
+ * @param bridgeOptions - Bindings applied by this activation.
+ * @returns A cleanup unsubscribing the state feed and removing all DOM
+ * listeners. Sessions without internals yield an empty cleanup.
+ *
+ * @example
+ * ```ts
+ * import { setupBridge } from '@sandlada/document-context'
+ *
+ * const cleanup = setupBridge(element, session, { properties: { count: 'dataset.count' } })
+ * cleanup()
+ * ```
  */
 export function setupBridge<S extends Record<PropertyKey, any>>(
     element: HTMLElement,

@@ -1,5 +1,21 @@
 import type { IContextBlueprint } from './types'
 
+/**
+ * Operator that transforms one blueprint into another while preserving the
+ * state shape `S` and threading the service-type accumulator
+ * (`InServices` to `OutServices`).
+ *
+ * Every `with*` operator returns this shape, so `pipe` can chain them with
+ * full type inference. Operators must stay pure: clone-and-return, never
+ * mutate the input blueprint.
+ *
+ * @example
+ * ```ts
+ * import { withProvider } from '@sandlada/document-context'
+ *
+ * const addLogger = withProvider('logger', () => new ConsoleLogger())
+ * ```
+ */
 export type BlueprintOperator<S extends Record<PropertyKey, any>, InServices, OutServices> = (
     blueprint: IContextBlueprint<S, InServices>
 ) => IContextBlueprint<S, OutServices>
@@ -103,6 +119,35 @@ export function pipe<S extends Record<PropertyKey, any>, S0, S1, S2, S3, S4, S5,
     op10: BlueprintOperator<S, S9, S10>
 ): IContextBlueprint<S, S10>
 
+/**
+ * Composes blueprint operators left-to-right into a single immutable blueprint.
+ *
+ * Pure Phase 1 composition: no DOM access, no I/O, no listeners. Each operator
+ * receives the blueprint returned by the previous one, so service types
+ * accumulate (`S0` through `S10`) with full inference. Calling `pipe(source)`
+ * with no operators returns `source` unchanged.
+ *
+ * Overloads cover chains of up to ten operators with precise typing; longer
+ * chains fall through to the variadic implementation signature.
+ *
+ * @param source - Seed blueprint, typically from `createContext()`.
+ * @param operators - `BlueprintOperator` functions applied in order
+ * (`op1`, then `op2`, and so on).
+ * @returns The composed `IContextBlueprint` carrying the union of all
+ * registered services.
+ *
+ * @example
+ * ```ts
+ * import { createContext, pipe, withProvider, withBridge, withStorage } from '@sandlada/document-context'
+ *
+ * const blueprint = pipe(
+ *     createContext({ count: 0 }),
+ *     withProvider('logger', () => new ConsoleLogger()),
+ *     withBridge({ properties: { count: 'dataset.count' } }),
+ *     withStorage({ adapter: 'localStorage', key: 'counter' })
+ * )
+ * ```
+ */
 export function pipe<S extends Record<PropertyKey, any>>(
     source: IContextBlueprint<S, any>,
     ...operators: Array<(bp: IContextBlueprint<S, any>) => IContextBlueprint<S, any>>

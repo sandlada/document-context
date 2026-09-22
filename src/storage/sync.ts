@@ -11,11 +11,33 @@ import {
 import { resolveHydratedState } from './hydration'
 
 /**
- * Activates persistence, hydration, and cross-tab synchronization on a mounted session.
+ * Activates persistence, hydration, and cross-tab sync for a mounted session.
  *
- * @param session Active ISession.
- * @param storageOptions Storage configuration options.
- * @returns Cleanup function.
+ * Normally invoked by the `withStorage` mount hook (and redundantly by the
+ * storage global mount plugin when `blueprint.storage` exists), not by hand.
+ * The pipeline is: synchronous read + `resolveHydratedState()` seeding (async
+ * adapters hydrate late via `update()` instead) → `BroadcastChannel`
+ * `sandlada-sync-{key}` subscription (unless `crossTabSync === false`) →
+ * state subscription persisting every emission through
+ * `serializeWithVersion()` (coordinated by `navigator.locks` when available,
+ * rebroadcasting to the channel) → window `storage`-event listener. Every
+ * parse or write failure is routed to the session error stream as
+ * `InvalidStorageDataError`; disposed sessions stop persisting and applying
+ * remote updates.
+ *
+ * @param session - Live session to persist.
+ * @param storageOptions - Storage config; see {@link IStorageOptions}.
+ * @returns A cleanup unsubscribing the state feed, closing the channel, and
+ * removing the `storage` listener. Sessions without internals yield an empty
+ * cleanup.
+ *
+ * @example
+ * ```ts
+ * import { setupStorage } from '@sandlada/document-context'
+ *
+ * const cleanup = setupStorage(session, { adapter: 'localStorage', key: 'counter' })
+ * cleanup()
+ * ```
  */
 export function setupStorage<S extends Record<PropertyKey, any>>(
     session: ISession<S, any>,

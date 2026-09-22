@@ -22,10 +22,43 @@ const providerRouteCache = new WeakMap<
     Map<string | ServiceToken<any>, WeakRef<ISession<any, any>>>
 >()
 
+/**
+ * Reads a `'singleton'` instance from the page-wide global registry without
+ * touching the DOM.
+ *
+ * @param token - Service identifier.
+ * @returns The cached singleton instance, or `undefined` when absent. Note: a
+ * stored `undefined` value is indistinguishable from a miss.
+ *
+ * @example
+ * ```ts
+ * import { getGlobalSingleton } from '@sandlada/document-context'
+ *
+ * const logger = getGlobalSingleton('logger')
+ * ```
+ */
 export function getGlobalSingleton<T = unknown>(token: string | ServiceToken<T>): T | undefined {
     return globalSingletonRegistry.get(token)
 }
 
+/**
+ * Seeds or overwrites a `'singleton'` instance in the page-wide global registry.
+ *
+ * Singletons created via factories are cached here automatically; call this
+ * directly to pre-seed test doubles, framework singletons, or values that
+ * must resolve even on detached nodes.
+ *
+ * @param token - Service identifier.
+ * @param instance - Instance to store.
+ * @returns `void`.
+ *
+ * @example
+ * ```ts
+ * import { setGlobalSingleton } from '@sandlada/document-context'
+ *
+ * setGlobalSingleton('logger', new ConsoleLogger())
+ * ```
+ */
 export function setGlobalSingleton<T = unknown>(
     token: string | ServiceToken<T>,
     instance: T
@@ -33,10 +66,53 @@ export function setGlobalSingleton<T = unknown>(
     globalSingletonRegistry.set(token, instance)
 }
 
+/**
+ * Clears every entry in the page-wide singleton registry.
+ *
+ * Primarily a test-isolation helper (`afterEach(clearGlobalSingletons)`).
+ * Live sessions keep their scoped caches; only future `'singleton'`
+ * resolutions re-run factories.
+ *
+ * @returns `void`.
+ *
+ * @example
+ * ```ts
+ * import { clearGlobalSingletons } from '@sandlada/document-context'
+ *
+ * afterEach(() => clearGlobalSingletons())
+ * ```
+ */
 export function clearGlobalSingletons(): void {
     globalSingletonRegistry.clear()
 }
 
+/**
+ * Instantiates (or returns the cached) service for one registration record.
+ *
+ * Internal resolution primitive used by `inject`, `injectAll`, and the
+ * `context-request` responder. Applies the lifecycle policy: `'singleton'`
+ * consults and populates the global registry, `'scoped'` consults and
+ * populates the session internals, `'transient'` always invokes the factory.
+ * Guards re-entrant factories with the shared `resolutionStack` and throws
+ * `CircularDependencyError` on cycles. Async registrations never resolve here:
+ * a cached async value is returned when present, otherwise
+ * `AsyncServiceNotReadyError` is thrown and callers must use `injectAsync()`.
+ *
+ * @param registration - Registration record from `blueprint.providers`.
+ * @param session - Owning session passed to the factory.
+ * @returns The resolved (or cached) service instance.
+ * @throws {AsyncServiceNotReadyError} When the registration is async and
+ * uncached.
+ * @throws {CircularDependencyError} When the factory re-enters its own token.
+ *
+ * @example
+ * ```ts
+ * import { resolveServiceInstance } from '@sandlada/document-context'
+ *
+ * const reg = session.blueprint.providers.get('logger')!
+ * const logger = resolveServiceInstance(reg, session)
+ * ```
+ */
 export function resolveServiceInstance<T = unknown>(
     registration: IServiceRegistration<T>,
     session: ISession<any, any>
@@ -113,7 +189,21 @@ export function resolveServiceInstance<T = unknown>(
 }
 
 /**
- * Attaches the W3C context-request event listener to a mounted host element.
+ * Attaches the W3C `context-request` responder to a mounted host element.
+ *
+ * Internal mount-plugin helper (auto-registered via `registerMountPlugin`):
+ * listens for bubbling `ContextRequestEvent`s from descendants, resolves the
+ * requested token against this session, and invokes `event.detail.callback`.
+ * Sync providers resolve via `resolveServiceInstance()`; async providers
+ * answer from cache or invoke the factory without awaiting (streaming state
+ * keys additionally subscribe to the session subject). Non-`multi` answers
+ * call `stopPropagation()` so the nearest provider wins; `multi` answers let
+ * the event keep bubbling for `injectAll()` accumulation.
+ *
+ * @param element - Host element owning `session`.
+ * @param session - Mounted session whose providers answer requests.
+ * @returns A cleanup removing the listener and unsubscribing all streaming
+ * callbacks opened by this responder.
  */
 export function setupProviderResponder(
     element: HTMLElement,
@@ -212,21 +302,91 @@ registerMountPlugin((session) => {
 })
 
 /**
- * Curried synchronous dependency injection verb.
- * Resolves a service token from an ISession or an HTMLElement via the W3C Context Protocol.
+ * Curried synchronous injection over the `ServiceRegistry` string-token map.
  *
- * @param token The service identifier.
- * @returns Curried function accepting an ISession or HTMLElement.
+ * Typed overload: `token` must be a key of the globally augmented
+ * `ServiceRegistry`, and the resolved value is `ServiceRegistry[K]`. Use this
+ * overload for application services declared via `declare module`
+ * augmentation.
+ *
+ * @param token - Augmented registry key.
+ * @returns Curried resolver `(elementOrSession) => ServiceRegistry[K]`.
+ *
+ * @example
+ * ```ts
+ * declare module '@sandlada/document-context' {
+ *     interface ServiceRegistry { 'auth-service': AuthService }
+ * }
+ * const auth = inject('auth-service')(document.getElementById('login')!)
+ * ```
  */
 export function inject<K extends keyof ServiceRegistry>(
     token: K
 ): (target: ISession<any, any> | HTMLElement) => ServiceRegistry[K]
+/**
+ * Curried synchronous injection over a branded {@link ServiceToken}.
+ *
+ * Typed overload: the resolved value is the token's phantom type `T`,
+ * inferred from `ServiceToken<T>`. Prefer over strings for cross-bundle
+ * services where name collisions are a risk.
+ *
+ * @param token - Branded token created by `createToken<T>()`.
+ * @returns Curried resolver `(elementOrSession) => T`.
+ *
+ * @example
+ * ```ts
+ * const logger = inject(LoggerToken)(session)
+ * ```
+ */
 export function inject<T>(
     token: ServiceToken<T>
 ): (target: ISession<any, any> | HTMLElement) => T
+/**
+ * Curried synchronous injection over an untyped string token.
+ *
+ * Fallback overload for ad-hoc or unregistered keys; the caller supplies `T`
+ * explicitly. For typed lookups, augment `ServiceRegistry` or use a branded
+ * `ServiceToken` instead.
+ *
+ * @param token - Arbitrary string key.
+ * @returns Curried resolver `(elementOrSession) => T` (default `unknown`).
+ *
+ * @example
+ * ```ts
+ * const theme = inject<'light' | 'dark'>('theme-mode')(childEl)
+ * ```
+ */
 export function inject<T = unknown>(
     token: string
 ): (target: ISession<any, any> | HTMLElement) => T
+/**
+ * Curried synchronous dependency injection verb.
+ *
+ * Resolves `token` against an `ISession` directly (local providers first,
+ * then delegating to the session host element) or against an `HTMLElement`
+ * by dispatching a synchronous `ContextRequestEvent` that bubbles up the DOM
+ * tree: route-cache fast path → ancestor provider → global singleton →
+ * `UnknownServiceError`. Detached nodes throw `UnconnectedNodeError` unless
+ * the token is already a cached global singleton. Async providers throw
+ * `AsyncServiceNotReadyError` unless already cached; use `injectAsync()`.
+ *
+ * @param token - Service identifier (registry key, branded token, or string).
+ * @returns Curried function accepting an `ISession` or connected
+ * `HTMLElement` and returning the resolved instance.
+ * @throws {UnconnectedNodeError} When the target is detached and uncached.
+ * @throws {UnknownServiceError} When no provider answers.
+ * @throws {AsyncServiceNotReadyError} When the provider is async and uncached.
+ * @throws {CircularDependencyError} When factories form a cycle.
+ *
+ * @example
+ * ```ts
+ * import { inject } from '@sandlada/document-context'
+ *
+ * const useLogger = inject('logger')
+ * const logger = useLogger(session)
+ * const nested = useLogger(document.getElementById('child')!)
+ * ```
+ */
 export function inject(token: any): (target: ISession<any, any> | HTMLElement) => any {
     return (target: ISession<any, any> | HTMLElement): any => {
         // 1. If target is ISession, check local providers first

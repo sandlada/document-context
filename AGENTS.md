@@ -178,6 +178,16 @@ AI agents must strictly adhere to the following rules across all generated and m
     - `strict: true`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`, `noUncheckedSideEffectImports: true`, `verbatimModuleSyntax: true`, `isolatedModules: true`. Target `ES2022`, `moduleResolution: bundler`.
 11. **Build Directory**:
     - Never manually edit or commit files in `build/`.
+12. **TSDoc / API Comment Standards (注釋規範)**:
+    - **Placement**: Write the full comment on the implementation signature only. Do not repeat it on every overload, except when an overload is semantically distinct and needs its own one-line distinction plus `@example` (i.e. `inject` / `injectAsync` / `injectAll` / `injectAllAsync` overloads for `ServiceRegistry` vs `ServiceToken` vs `string`).
+    - **Required sections**: Every public API comment MUST contain description (one-liner + paragraph covering phase, purity, side effects, idempotency, lifecycle), `@param` for each parameter, `@returns`, `@throws` (when applicable), and `@example` with runnable minimal code.
+    - **Interfaces & types**: Document each property with `@property`. Error classes document trigger scenario, `resolutionGuide`, and the `string | Options` constructor form on the implementation.
+    - **Examples**: `@example` code MUST follow the same style rules (no semicolons, 4 spaces, single quotes) and MUST be directly runnable against the public package entry.
+    - **Honesty over aspiration**: Document actual runtime behavior only. Never invent unimplemented behavior. Mark reserved-but-unconsumed fields explicitly (e.g. `IBridgeOptions.conflict` / `activeElementGuard`, `mountAsync` single-microtask yield, `domFirst` currently identical to `merge`, `toSignal` retained subscription with no unsubscribe).
+    - **Disambiguation**: When two APIs share a name but differ in target (decorator-form `inject` on class instances vs function-form `dom/inject` on explicit targets), each comment MUST cross-link the other.
+    - **Internal helpers**: `session-internal`, `findProviderHost`, `resolveServiceInstance`, `setupProviderResponder`, and similar internals get a brief comment; public-facing detail is not required.
+    - **No fix identifiers**: Never add `BUG-001`, `fix:01`, or similar repair tags in comments. State the correct semantics directly.
+    - **Verification**: After touching comments, run `npm run typecheck`, `npm test`, and `npm run build` to confirm examples type-check and nothing broke.
 
 
 

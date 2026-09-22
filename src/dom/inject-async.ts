@@ -18,10 +18,30 @@ import { getGlobalSingleton, setGlobalSingleton } from './inject'
 const asyncResolutionStack: string[] = []
 const globalInFlightMap = new Map<string | ServiceToken<any>, Promise<any>>()
 
+/**
+ * Options for {@link injectAsync} / {@link injectAllAsync}.
+ *
+ * @property signal - Optional `AbortSignal` for per-caller cancellation. A
+ * caller abort rejects only that caller's promise with an `AbortError`
+ * `DOMException`; the shared in-flight provider promise is unaffected.
+ */
 export interface IInjectAsyncOptions {
     readonly signal?: AbortSignal | undefined
 }
 
+/**
+ * Walks `element` and its `parentElement` chain for the nearest non-disposed
+ * session whose blueprint registers `token`.
+ *
+ * Internal lookup for `injectAsync()`: unlike sync `inject()`, it does not
+ * dispatch events but scans the element-session WeakMap directly, so only
+ * mounted ancestors (not bare `context-request` responders) participate.
+ *
+ * @param element - Starting element (typically the injection target).
+ * @param token - Service identifier to find.
+ * @returns The nearest `{ session, registration }` pair, or `null` when no
+ * ancestor registers the token.
+ */
 function findProviderHost(
     element: HTMLElement,
     token: string | ServiceToken<any>
@@ -41,25 +61,93 @@ function findProviderHost(
 }
 
 /**
- * Curried asynchronous dependency injection verb with Promise Coalescing,
- * self-healing cache eviction, and multi-caller abort isolation.
+ * Curried async injection over the `ServiceRegistry` string-token map.
  *
- * @param token The service identifier.
- * @param options Optional configuration including AbortSignal.
- * @returns Curried function accepting an ISession or HTMLElement, returning a Promise.
+ * Typed overload: `token` must be a key of the augmented `ServiceRegistry`
+ * and the promise resolves to `Awaited<ServiceRegistry[K]>`.
+ *
+ * @param token - Augmented registry key.
+ * @param options - Optional `{ signal }` for per-caller abort isolation.
+ * @returns Curried resolver `(elementOrSession) => Promise<...>`.
+ *
+ * @example
+ * ```ts
+ * const config = await injectAsync('remote-config')(document.getElementById('app')!)
+ * ```
  */
 export function injectAsync<K extends keyof ServiceRegistry>(
     token: K,
     options?: IInjectAsyncOptions
 ): (target: ISession<any, any> | HTMLElement) => Promise<Awaited<ServiceRegistry[K]>>
+/**
+ * Curried async injection over a branded {@link ServiceToken}.
+ *
+ * Typed overload: resolves to the token's phantom type `T`, unwrapping
+ * provider-level `Promise` nesting via `await` semantics.
+ *
+ * @param token - Branded token created by `createToken<T>()`.
+ * @param options - Optional `{ signal }` for per-caller abort isolation.
+ * @returns Curried resolver `(elementOrSession) => Promise<T>`.
+ *
+ * @example
+ * ```ts
+ * const svc = await injectAsync(ConfigToken)(session)
+ * ```
+ */
 export function injectAsync<T>(
     token: ServiceToken<T>,
     options?: IInjectAsyncOptions
 ): (target: ISession<any, any> | HTMLElement) => Promise<T>
+/**
+ * Curried async injection over an untyped string token.
+ *
+ * Fallback overload; the caller supplies `T` explicitly.
+ *
+ * @param token - Arbitrary string key.
+ * @param options - Optional `{ signal }` for per-caller abort isolation.
+ * @returns Curried resolver `(elementOrSession) => Promise<T>`.
+ *
+ * @example
+ * ```ts
+ * const ctl = new AbortController()
+ * const svc = await injectAsync('remote-config', { signal: ctl.signal })(session)
+ * ```
+ */
 export function injectAsync<T = unknown>(
     token: string,
     options?: IInjectAsyncOptions
 ): (target: ISession<any, any> | HTMLElement) => Promise<T>
+/**
+ * Curried asynchronous injection verb with promise coalescing, self-healing
+ * eviction, and multi-caller abort isolation.
+ *
+ * Accepts an `ISession` (local providers first) or a connected `HTMLElement`
+ * (nearest mounted ancestor via `parentElement` walk, then global singletons).
+ * Cached values (`'singleton'` globals, `'scoped'` session entries) return
+ * immediately. Otherwise the factory runs once per token: concurrent callers
+ * share the same in-flight promise, rejections evict the entry instantly so
+ * the next call retries, and an already-aborted caller `signal` rejects with
+ * `AbortError` without cancelling the shared attempt. Unknown tokens throw
+ * `UnknownServiceError`; async cycles throw `CircularDependencyError`;
+ * detached nodes throw `UnconnectedNodeError` unless globally cached.
+ *
+ * @param token - Service identifier (registry key, branded token, or string).
+ * @param options - Optional `{ signal }` abort options.
+ * @returns Curried function accepting an `ISession` or `HTMLElement` and
+ * resolving to the service instance.
+ * @throws {UnknownServiceError} When no provider or global entry exists.
+ * @throws {UnconnectedNodeError} When the element target is detached.
+ * @throws {CircularDependencyError} When async factories form a cycle.
+ *
+ * @example
+ * ```ts
+ * import { injectAsync } from '@sandlada/document-context'
+ *
+ * const useConfig = injectAsync('remote-config')
+ * const config = await useConfig(session)
+ * const [a, b] = await Promise.all([useConfig(el), useConfig(el)])
+ * ```
+ */
 export function injectAsync(
     token: any,
     options?: IInjectAsyncOptions
