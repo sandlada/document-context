@@ -12,9 +12,9 @@ import type { ISession } from './types'
  * Disposal and suspension contract: updates on a disposed session (or one
  * whose internals are gone) silently no-op and return `false`, so dangling
  * async closures cannot throw. Updates arriving while the session is suspended
- * (keyed host detached within its 50ms TTL) are additionally appended to the
- * dirty queue for replay on resuscitation, while still emitting to the live
- * subject.
+ * (keyed host detached within its TTL) evolve the in-memory store as usual —
+ * subscribers and storage keep receiving snapshots; DOM projection is paused
+ * and re-applied in full by the bridge when the session is resuscitated.
  *
  * @param updater - Partial state object or transition function. Function form
  * receives the current state and returns the partial (or full) state to merge.
@@ -53,10 +53,6 @@ export function update<S extends Record<PropertyKey, any>>(
         }
 
         const finalState = isDev() ? Object.freeze(nextState) : nextState
-
-        if (internal.isSuspended) {
-            internal.dirtyQueue.push((_) => partialOrFull)
-        }
 
         internal.stateSubject.next(finalState as S)
         return true

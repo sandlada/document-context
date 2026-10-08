@@ -126,7 +126,7 @@ The system strictly decouples and coordinates four orthogonal lifecycle dimensio
 
 - **Invariants**:
   - DOM unmount must NOT prematurely destroy Session without Microtask reparenting check.
-  - Keyed Sessions entering `Suspended` pause DOM writes into a Dirty Queue while keeping the memory store alive for up to 50ms TTL.
+  - Keyed Sessions (`mount(bp, { key })` / `data-context-key`) entering `Suspended` pause DOM projection while the memory store, subscribers, and storage keep evolving; resuscitation rebinds host integrations and re-projects the full state onto the new host (`suspensionTtlMs`, default 50, `0` = dispose immediately, `Infinity` = never auto-dispose). Identity lives in a per-Document WeakRef registry.
   - Disposed Sessions silently No-op on subsequent `update()` calls to prevent unhandled rejections from dangling async closures.
   - In-flight async provider promises must be coalesced and evicted immediately upon rejection for self-healing retries.
 

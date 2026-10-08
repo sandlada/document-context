@@ -36,7 +36,9 @@ console.log(getCount(session))
 ```
 
 `count` renders to `data-count` on `#counter-box` automatically. Detaching the node tears the session
-down; reattaching a keyed node within 50ms resuscitates it instead.
+down; a keyed session (`mount(blueprint, { key: 'counter-box' })`) instead parks for a grace period
+(`suspensionTtlMs`, default 50ms) and resuscitates with full state when the same key is mounted on a
+replacement node — an HTMX swap or framework re-render keeps the session identity, services, and bridges.
 
 ## Import paths
 

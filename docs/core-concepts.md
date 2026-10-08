@@ -19,7 +19,7 @@ const blueprint = pipe(
 
 ## Phase 2: mount boundary
 
-`mount(blueprint)(element)` is the only place where side effects happen: state store creation, event listeners, bridge wiring, and observer registration. The returned session is cached per element in a `WeakMap`, so mounting twice is idempotent.
+`mount(blueprint)(element)` is the only place where side effects happen: state store creation, event listeners, bridge wiring, and observer registration. The returned session is cached per element in a `WeakMap`, so mounting twice is idempotent. `mount(blueprint, { key })(element)` additionally joins the per-document keyed registry: mounting a replacement host under the same key resuscitates the suspended session with its state, services, and bridges intact.
 
 ```ts
 import { mount, select, update, subscribe } from '@sandlada/document-context'

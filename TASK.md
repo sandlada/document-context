@@ -159,7 +159,7 @@ The goal of Milestone 3 is to provide fault-tolerant state persistence, multi-ta
 
 ## Milestone 4: P1 Async DI, Multi-Provider & Keyed Resuscitation
 
-The goal of Milestone 4 is to implement advanced async service resolution, multi-provider accumulation pipelines, and Keyed 50ms resuscitation state machines using strict TDD.
+The goal of Milestone 4 is to implement advanced async service resolution, multi-provider accumulation pipelines, and the keyed resuscitation state machine groundwork using strict TDD.
 
 ### 4.1 Async Dependency Injection (`injectAsync` & `mountAsync`)
 
@@ -181,12 +181,12 @@ The goal of Milestone 4 is to implement advanced async service resolution, multi
   - [x] Implement `injectAll` and `injectAllAsync` in `src/dom/inject-all.ts`.
   - [x] Verify 100% green tests via `npm test`.
 
-### 4.3 Keyed Identity & 50ms Grace Period Resuscitation State Machine
+### 4.3 Keyed Identity & Resuscitation State Machine (初版)
 
 - [x] **TDD Step 1: Keyed Resuscitation Tests** (`src/core/resuscitation.test.ts`):
-  - [x] `src/core/resuscitation.test.ts`: Test `data-context-key` host element identification, `Phase 4: Suspended` state transition with 50ms TTL timer, Dirty Queue write buffering, `Phase 5: Resuscitated` re-connection and dirty queue flushing, `resuscitate` hook execution, and TTL timeout transition to `Phase 6: Disposed`.
+  - [x] `src/core/resuscitation.test.ts`: Test keyed host identification, `Phase 4: Suspended` transition with TTL timer, `Phase 5: Resuscitated` re-connection, `resuscitate` hook execution, and TTL timeout transition to `Phase 6: Disposed`. (最初的 Dirty Queue 機制已由 Milestone 6 的全量重投影取代)
 - [x] **TDD Step 2: Keyed Resuscitation Implementation** (`src/core/resuscitation.ts`):
-  - [x] Implement resuscitation state machine and Dirty Queue in `src/core/resuscitation.ts`.
+  - [x] Implement the resuscitation state machine in `src/core/resuscitation.ts`.
   - [x] Verify 100% green tests via `npm test`.
 
 ---
@@ -213,6 +213,40 @@ The goal of Milestone 5 is to deliver fine-grained TC39 Signals interoperability
 
 ---
 
+## Milestone 6: P0 Keyed Session First-Class Citizenship
+
+The goal of Milestone 6 is to elevate keyed sessions (`mount(bp, { key })` / `data-context-key`) to first-class citizens: automatic registration, mount-driven and observer-driven resuscitation, configurable TTL, explicit conflict policy, host-activation rebinding, and a per-Document weak registry.
+
+### 6.1 Identity, Registry & Mount Options
+
+- [x] `src/core/session-key.test.ts` / `src/core/session-key.ts`: key resolution (option over attribute, trimming, empty = anonymous) and declarative write-back projection.
+- [x] `src/core/keyed-registry.test.ts` / `src/core/keyed-registry.ts`: per-Document `WeakMap` + `WeakRef` registry with FinalizationRegistry identity guard.
+- [x] `src/core/host-activation.test.ts` / `src/core/host-activation.ts`: host-scoped activation channel (bind/rebind/teardown) for bridge, responder, and GC tracking.
+- [x] `src/core/types.ts` / `src/core/types.test.ts`: `IMountOptions`, `ISession.key`, `ISession.isSuspended`, live `target` getter.
+- [x] `src/core/errors.ts` / `src/core/errors.test.ts`: `KeyedSessionConflictError` (`KEYED_SESSION_CONFLICT`) and `KeyedBlueprintMismatchError` (`KEYED_BLUEPRINT_MISMATCH`).
+
+### 6.2 Keyed Lifecycle Procedures
+
+- [x] `src/core/keyed-lifecycle.test.ts` / `src/core/keyed-lifecycle.ts`: `suspendSession` (hooks + event + TTL timer, no dirty queue) and `resuscitateSession` (target repoint, host rebind, full re-projection, hooks + event).
+- [x] `src/core/mount.ts` / `src/core/mount.test.ts`: auto-resuscitation, conflict matrix (`throw` | `evict` | `reset`), keyed registration, write-back projection, same-element conflict policy.
+- [x] `src/core/resuscitation.ts` / `src/core/resuscitation.test.ts`: public `findKeyedSession` / `unregisterKeyedSession` / `resuscitateKeyedSession` with per-document scope; `registerKeyedSession` removed from the public surface.
+- [x] `src/core/dispose.ts` / `src/core/dispose.test.ts`: TTL timer cancel, host-activation teardown, registry unregistration, `context-dispose` key sourced from internals.
+- [x] `src/core/update.ts`: dirty-queue removal — suspended updates evolve memory/subscribers/storage only.
+
+### 6.3 DOM Integration & Observer
+
+- [x] `src/bridge/with-bridge.ts` / `src/bridge/with-bridge.test.ts`: activation rebinding, suspended write pause, full re-projection on resuscitation, listener migration.
+- [x] `src/dom/inject.ts` / `src/dom/inject.test.ts`: responder via host activation; answers `context-request` on resuscitated hosts.
+- [x] `src/dom/observer.ts` / `src/dom/observer.test.ts`: suspension via `suspendSession`, TTL `0` / `Infinity` policies, same-node reconnect auto-resume, different-node non-adoption, adopt registry migration, HTMX-style end-to-end swap.
+- [x] Full suite green: `npm test`, `npm run typecheck`, `npm run build`.
+
+### 6.4 Documentation & Migration
+
+- [x] Update `DESIGN.md` (§4.3, §4.4.4, §6.2, §6.4.1, §6.5, §6.6, §13, §14), `TASK.md`, `AGENTS.md` invariants, module READMEs, `docs/lifecycles.md`, site docs.
+- [x] Migration notes: removed `registerKeyedSession`; `findKeyedSession` / `unregisterKeyedSession` gained a `document` parameter; mount auto-resuscitation and conflict throws; `target` became a live getter; `{ key }` writes back the attribute.
+
+---
+
 ## Task Progress Checklist
 
 | Milestone | Category                         | Status       | Primary Test Files (`*.test.ts`)                                                                                                                                  | Primary Source Files (`*.ts`)                                                                                                            |
@@ -225,3 +259,4 @@ The goal of Milestone 5 is to deliver fine-grained TC39 Signals interoperability
 | **M3**    | State Persistence & Hydration    | 🟢 Completed | `src/storage/adapters.test.ts`, `src/storage/hydration.test.ts`, `src/storage/with-storage.test.ts`, `src/storage/sync.test.ts`                                   | `src/storage/adapters.ts`, `src/storage/hydration.ts`, `src/storage/with-storage.ts`, `src/storage/sync.ts`                              |
 | **M4**    | Async DI, Multi-Provider & Keyed | 🟢 Completed | `src/core/async-provider.test.ts`, `src/dom/inject-async.test.ts`, `src/core/mount-async.test.ts`, `src/dom/inject-all.test.ts`, `src/core/resuscitation.test.ts` | `src/core/async-provider.ts`, `src/dom/inject-async.ts`, `src/core/mount-async.ts`, `src/dom/inject-all.ts`, `src/core/resuscitation.ts` |
 | **M5**    | Signals, Decorators & Release    | 🟢 Completed | `src/signals/to-signal.test.ts`, `src/core/decorators.test.ts`                                                                                                    | `src/signals/to-signal.ts`, `src/core/decorators.ts`                                                                                     |
+| **M6**    | Keyed Session First-Class        | 🟢 Completed | `src/core/session-key.test.ts`, `src/core/keyed-registry.test.ts`, `src/core/host-activation.test.ts`, `src/core/keyed-lifecycle.test.ts`, `src/core/mount.test.ts`, `src/core/resuscitation.test.ts`, `src/dom/observer.test.ts` | `src/core/session-key.ts`, `src/core/keyed-registry.ts`, `src/core/host-activation.ts`, `src/core/keyed-lifecycle.ts`, `src/core/mount.ts`, `src/core/resuscitation.ts`, `src/dom/observer.ts` |

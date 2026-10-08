@@ -1,4 +1,10 @@
 import { dispose } from '../core/dispose'
+import { resuscitateSession, suspendSession } from '../core/keyed-lifecycle'
+import {
+    lookupKeyedSession,
+    registerKeyedSession,
+    unregisterKeyedSessionEntry
+} from '../core/keyed-registry'
 import { getInternalSession } from '../core/session-internal'
 import type { ISession } from '../core/types'
 
@@ -41,45 +47,24 @@ function processDisconnections(doc: Document) {
                     continue
                 }
 
-                const key = el.getAttribute('data-context-key')
-                if (key) {
-                    // Keyed session enters Suspended state
-                    const internal = getInternalSession(session)
-                    if (internal && !internal.isSuspended) {
-                        internal.isSuspended = true
+                const internal = getInternalSession(session)
+                if (!internal || internal.isDisposed) {
+                    trackedSessions.delete(item)
+                    continue
+                }
 
-                        // Trigger suspend hooks
-                        const suspendHooks = session.blueprint.hooks.filter(
-                            (h) => h.event === 'suspend'
-                        )
-                        for (const hook of suspendHooks) {
-                            try {
-                                hook.handler(session)
-                            } catch {
-                                // Sandbox
-                            }
-                        }
+                // The session already moved on (resuscitated elsewhere)
+                if (internal.target !== el) {
+                    trackedSessions.delete(item)
+                    continue
+                }
 
-                        // Dispatch context-suspend event
-                        try {
-                            el.dispatchEvent(
-                                new CustomEvent('context-suspend', {
-                                    bubbles: true,
-                                    composed: true,
-                                    detail: { sessionKey: key, ttl: 50 }
-                                })
-                            )
-                        } catch {
-                            // Suppress
-                        }
-
-                        // 50ms TTL timer before permanent disposal
-                        setTimeout(() => {
-                            if (internal.isSuspended && !el.isConnected) {
-                                dispose(session)
-                                trackedSessions.delete(item)
-                            }
-                        }, 50)
+                if (internal.key !== undefined) {
+                    // Keyed session enters the Suspended state (TTL 0 disposes
+                    // immediately inside the procedure)
+                    const parked = suspendSession(session)
+                    if (!parked && session.isDisposed) {
+                        trackedSessions.delete(item)
                     }
                 } else {
                     // Anonymous session: deterministic immediate disposal
@@ -91,6 +76,66 @@ function processDisconnections(doc: Document) {
     })
 }
 
+let isProcessingAdditions = false
+
+function collectKeyedElements(root: Node, out: HTMLElement[]): void {
+    if (root instanceof HTMLElement && root.hasAttribute('data-context-key')) {
+        out.push(root)
+    }
+    const asParent = root as ParentNode
+    if (typeof asParent.querySelectorAll === 'function') {
+        asParent.querySelectorAll('[data-context-key]').forEach((el) => {
+            if (el instanceof HTMLElement) {
+                out.push(el)
+            }
+        })
+    }
+}
+
+/**
+ * Resumes sessions whose own (previously suspended) host node was re-inserted
+ * into the document. Only the exact previous target is auto-resumed: a
+ * different node carrying the same key is never silently adopted (that is a
+ * mount-boundary decision).
+ */
+function processAdditions(addedNodes: Node[]): void {
+    if (isProcessingAdditions) {
+        return
+    }
+    isProcessingAdditions = true
+    try {
+        const candidates: HTMLElement[] = []
+        for (const node of addedNodes) {
+            collectKeyedElements(node, candidates)
+        }
+
+        for (const el of candidates) {
+            const rawKey = el.getAttribute('data-context-key')
+            if (rawKey === null) {
+                continue
+            }
+            const key = rawKey.trim()
+            if (key === '') {
+                continue
+            }
+
+            const session = lookupKeyedSession(el.ownerDocument, key)
+            if (!session || session.isDisposed) {
+                continue
+            }
+
+            const internal = getInternalSession(session)
+            if (!internal || !internal.isSuspended || internal.target !== el) {
+                continue
+            }
+
+            resuscitateSession(session, el)
+        }
+    } finally {
+        isProcessingAdditions = false
+    }
+}
+
 /**
  * Starts (or reuses) the centralized document-level `MutationObserver` that
  * drives automatic session GC.
@@ -99,7 +144,9 @@ function processDisconnections(doc: Document) {
  * `{ childList: true, subtree: true }`. Removal batches are funneled into
  * `processDisconnections()`, which runs inside `queueMicrotask` so a
  * disconnect followed by a same-task reparent is treated as a move, not a
- * destroy. Safe to call repeatedly; returns the cached observer.
+ * destroy. Addition batches are funneled into `processAdditions()`, which
+ * resumes a suspended keyed session when its own host node is re-inserted.
+ * Safe to call repeatedly; returns the cached observer.
  *
  * @param doc - Document to observe. Defaults to the global `document`.
  * @returns The active `MutationObserver` for the document.
@@ -120,14 +167,20 @@ export function startRootObserver(doc: Document = document): MutationObserver {
 
     observer = new MutationObserver((mutations) => {
         let hasRemovals = false
+        const addedNodes: Node[] = []
         for (const mutation of mutations) {
             if (mutation.removedNodes.length > 0) {
                 hasRemovals = true
-                break
+            }
+            for (const node of Array.from(mutation.addedNodes)) {
+                addedNodes.push(node)
             }
         }
         if (hasRemovals) {
             processDisconnections(doc)
+        }
+        if (addedNodes.length > 0) {
+            processAdditions(addedNodes)
         }
     })
 
@@ -172,17 +225,19 @@ export function stopRootObserver(doc: Document = document): void {
 /**
  * Registers a host element and its session with the centralized GC tracker.
  *
- * Auto-invoked by the DOM mount plugin on every `mount()`; also ensures the
- * owner document's root observer is running and registers a
+ * Auto-invoked by the DOM mount plugin on every `mount()`, and again for the
+ * replacement host on resuscitation (host activation rebind); also ensures
+ * the owner document's root observer is running and registers a
  * `FinalizationRegistry` fallback that disposes the session if the element is
  * garbage-collected without a removal record. Entries hold both sides by
  * `WeakRef`, so tracking itself never leaks.
  *
- * GC policy on disconnect: hosts without `data-context-key` dispose
+ * GC policy on disconnect: hosts without a resolved key dispose
  * deterministically on the next microtask; keyed hosts enter the suspended
  * state (suspend hooks + `context-suspend` event with
- * `detail: { sessionKey, ttl: 50 }`) and dispose only if still disconnected
- * after the 50ms TTL.
+ * `detail: { sessionKey, ttl }`, where `ttl` is the resolved
+ * `suspensionTtlMs`) and dispose only if still disconnected when the TTL
+ * elapses. `suspensionTtlMs: 0` disposes immediately without suspending.
  *
  * @param element - Mounted host element.
  * @param session - Live session bound to the element.
@@ -218,12 +273,13 @@ export function trackElementForGC(
  * Migrates a session to a new host document (iframe, popup, or
  * Picture-in-Picture window).
  *
- * Stops the old document's root observer when it differs, starts the new
- * one, runs blueprint `adopt` hooks as `(session, newDocument)`, and
- * dispatches a bubbling, composed `context-adopt` CustomEvent with
- * `detail: { newDocument }`. Hook and dispatch failures are sandboxed. The
- * session target element itself is not moved; move or adopt the node first,
- * then call this to rewire observation.
+ * Stops the old document's root observer when it differs, migrates the keyed
+ * registry entry to the new document, starts the new observer, runs blueprint
+ * `adopt` hooks as `(session, newDocument)`, and dispatches a bubbling,
+ * composed `context-adopt` CustomEvent with `detail: { newDocument }`. Hook
+ * and dispatch failures are sandboxed. The session target element itself is
+ * not moved; move or adopt the node first, then call this to rewire
+ * observation.
  *
  * @param session - Live session to migrate.
  * @param newDocument - Destination document now hosting the element.
@@ -246,6 +302,12 @@ export function adoptSessionToDocument(
     const oldDoc = el.ownerDocument
     if (oldDoc && oldDoc !== newDocument) {
         stopRootObserver(oldDoc)
+
+        const internal = getInternalSession(session)
+        if (internal && internal.key !== undefined) {
+            unregisterKeyedSessionEntry(oldDoc, internal.key, session)
+            registerKeyedSession(newDocument, internal.key, session)
+        }
     }
 
     startRootObserver(newDocument)

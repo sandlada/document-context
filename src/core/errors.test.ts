@@ -6,6 +6,8 @@ import {
     DocumentContextError,
     HydrationMismatchError,
     InvalidStorageDataError,
+    KeyedBlueprintMismatchError,
+    KeyedSessionConflictError,
     PropertySyncSecurityError,
     UnconnectedNodeError,
     UnknownServiceError
@@ -262,6 +264,57 @@ describe('Error Taxonomy', () => {
 
             expect(err.key).toBe('session-store')
             expect(err.rawData).toBe(12345)
+        })
+    })
+
+    describe('KeyedSessionConflictError', () => {
+        it('should report the conflicting key and host elements', () => {
+            const existingElement = document.createElement('div')
+            const incomingElement = document.createElement('section')
+            const err = new KeyedSessionConflictError({
+                key: 'cart-panel',
+                existingElement,
+                incomingElement
+            })
+
+            expect(err).toBeInstanceOf(DocumentContextError)
+            expect(err.name).toBe('KeyedSessionConflictError')
+            expect(err.code).toBe('KEYED_SESSION_CONFLICT')
+            expect(err.key).toBe('cart-panel')
+            expect(err.existingElement).toBe(existingElement)
+            expect(err.incomingElement).toBe(incomingElement)
+            expect(err.message).toContain("'cart-panel'")
+            expect(err.resolutionGuide).toContain("onConflict: 'evict'")
+        })
+
+        it('should support the string shortcut construction form', () => {
+            const err = new KeyedSessionConflictError('hero-widget')
+
+            expect(err.key).toBe('hero-widget')
+            expect(err.details).toEqual({ key: 'hero-widget' })
+        })
+    })
+
+    describe('KeyedBlueprintMismatchError', () => {
+        it('should report the key and resolution guidance', () => {
+            const err = new KeyedBlueprintMismatchError('panel-key')
+
+            expect(err).toBeInstanceOf(DocumentContextError)
+            expect(err.name).toBe('KeyedBlueprintMismatchError')
+            expect(err.code).toBe('KEYED_BLUEPRINT_MISMATCH')
+            expect(err.key).toBe('panel-key')
+            expect(err.message).toContain("'panel-key'")
+            expect(err.resolutionGuide).toContain("onConflict: 'reset'")
+        })
+
+        it('should support options object with custom message', () => {
+            const err = new KeyedBlueprintMismatchError({
+                key: 'panel-key',
+                message: 'Custom mismatch message'
+            })
+
+            expect(err.key).toBe('panel-key')
+            expect(err.message).toBe('Custom mismatch message')
         })
     })
 })

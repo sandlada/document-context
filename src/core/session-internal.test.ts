@@ -23,6 +23,20 @@ describe('session-internal', () => {
         expect(internal.stateSubject.getValue()).toEqual({ x: 1 })
     })
 
+    it('captures the resolved key and suspension TTL', () => {
+        const el = document.createElement('div')
+        const bp = createContext({ x: 1 })
+
+        const defaultInternal = createInternalSessionState(el, bp)
+        expect(defaultInternal.key).toBeUndefined()
+        expect(defaultInternal.suspensionTtlMs).toBe(50)
+        expect(defaultInternal.suspensionTimer).toBeUndefined()
+
+        const keyedInternal = createInternalSessionState(el, bp, 'cart-panel', 250)
+        expect(keyedInternal.key).toBe('cart-panel')
+        expect(keyedInternal.suspensionTtlMs).toBe(250)
+    })
+
     it('tracks element to session association', () => {
         const el = document.createElement('div')
         const dummySession = { target: el } as unknown as ISession

@@ -4,6 +4,8 @@ import { withHook } from './hooks'
 import { mount } from './mount'
 import { pipe } from './pipe'
 import { dispose, readErrorStream } from './dispose'
+import { findKeyedSession } from './resuscitation'
+import { startRootObserver, stopRootObserver, trackElementForGC } from '../dom/observer'
 
 describe('dispose & readErrorStream', () => {
     it('marks session as disposed, aborts signal, and dispatches context-dispose event', () => {
@@ -125,5 +127,61 @@ describe('dispose & readErrorStream', () => {
 
         expect(disposeHookCount).toBe(1)
         expect(session.isDisposed).toBe(true)
+    })
+
+    it('unregisters the keyed identity entry on dispose', () => {
+        const el = document.createElement('div')
+        const bp = createContext({})
+        const session = mount(bp, { key: 'dispose-key' })(el)
+
+        expect(findKeyedSession('dispose-key', el.ownerDocument)).toBe(session)
+
+        dispose(session)
+
+        expect(findKeyedSession('dispose-key', el.ownerDocument)).toBeUndefined()
+    })
+
+    it('reports the resolved session key even after attribute removal', () => {
+        const el = document.createElement('div')
+        const bp = createContext({})
+        let detail: any = null
+
+        el.addEventListener('context-dispose', (e: any) => {
+            detail = e.detail
+        })
+
+        const session = mount(bp, { key: 'sticky-key' })(el)
+        el.removeAttribute('data-context-key')
+
+        dispose(session)
+
+        expect(detail).toEqual({ sessionKey: 'sticky-key' })
+    })
+
+    it('cancels the pending suspension timer when resuscitated', async () => {
+        const el1 = document.createElement('div')
+        const el2 = document.createElement('div')
+        document.body.appendChild(el1)
+
+        startRootObserver(document)
+
+        const bp = createContext({ count: 0 })
+        const session = mount(bp, { key: 'timer-key', suspensionTtlMs: 300 })(el1)
+        trackElementForGC(el1, session)
+
+        document.body.removeChild(el1)
+        await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+        expect(session.isSuspended).toBe(true)
+
+        document.body.appendChild(el2)
+        mount(bp, { key: 'timer-key' })(el2)
+
+        await new Promise((resolve) => setTimeout(resolve, 400))
+
+        expect(session.isDisposed).toBe(false)
+        expect(session.isSuspended).toBe(false)
+
+        document.body.removeChild(el2)
+        stopRootObserver(document)
     })
 })

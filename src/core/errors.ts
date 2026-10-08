@@ -729,3 +729,185 @@ export class InvalidStorageDataError extends DocumentContextError {
         this.rawData = raw
     }
 }
+
+/**
+ * Options bag for {@link KeyedSessionConflictError}.
+ *
+ * @property key - Resolved session key that collided.
+ * @property existingElement - Host element of the already-attached session.
+ * @property incomingElement - Host element of the attempted mount.
+ * @property details - Extra diagnostics merged with `{ key }`.
+ * @property message - Custom message override.
+ * @property resolutionGuide - Fix hint override.
+ * @property cause - Underlying cause.
+ */
+export interface KeyedSessionConflictErrorOptions {
+    readonly key: string
+    readonly existingElement?: HTMLElement | undefined
+    readonly incomingElement?: HTMLElement | undefined
+    readonly details?: Record<string, unknown> | undefined
+    readonly message?: string | undefined
+    readonly resolutionGuide?: string | undefined
+    readonly cause?: unknown
+}
+
+/**
+ * Thrown by `mount()` when a resolved key is already attached to a connected
+ * host element (or the same element is mounted again with a different key).
+ *
+ * Keyed identities are single-instance per document: two connected hosts with
+ * the same key would silently shadow each other. The default policy therefore
+ * fails loudly at the mount boundary. Alternatives: dispose the previous
+ * session explicitly, use a distinct key per instance, or opt into
+ * `onConflict: 'evict'` (hot transfer) / `'reset'` (discard and remount).
+ *
+ * The constructor accepts either a key string or a full options bag.
+ *
+ * @param keyOrOptions - Resolved key or
+ * {@link KeyedSessionConflictErrorOptions} bag.
+ * @returns A `KeyedSessionConflictError` with
+ * `code === 'KEYED_SESSION_CONFLICT'`.
+ *
+ * @example
+ * ```ts
+ * import { mount } from '@sandlada/document-context'
+ *
+ * const mountPanel = mount(panelBlueprint, { key: 'cart-panel' })
+ * mountPanel(firstPanel)
+ * // Throws when both hosts stay connected:
+ * // mountPanel(secondPanel)
+ * ```
+ */
+export class KeyedSessionConflictError extends DocumentContextError {
+    readonly key: string
+    readonly existingElement?: HTMLElement | undefined
+    readonly incomingElement?: HTMLElement | undefined
+
+    constructor(keyOrOptions: string | KeyedSessionConflictErrorOptions) {
+        const isOptions = typeof keyOrOptions === 'object' && keyOrOptions !== null
+        const key = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).key
+            : (keyOrOptions as string)
+        const existingElement = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).existingElement
+            : undefined
+        const incomingElement = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).incomingElement
+            : undefined
+        const customMessage = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).message
+            : undefined
+        const guide = (isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).resolutionGuide
+            : undefined) ??
+            `Dispose the previous session for key '${key}' before mounting, use a distinct key per host, or pass onConflict: 'evict' to hot-transfer the session to the new element.`
+        const cause = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).cause
+            : undefined
+        const extraDetails = isOptions
+            ? (keyOrOptions as KeyedSessionConflictErrorOptions).details
+            : undefined
+
+        const message = customMessage ??
+            `Keyed session conflict: key '${key}' is already attached to a connected host element.`
+
+        super({
+            code: 'KEYED_SESSION_CONFLICT',
+            message,
+            details: {
+                key,
+                ...(existingElement !== undefined ? { existingElement } : {}),
+                ...(incomingElement !== undefined ? { incomingElement } : {}),
+                ...(extraDetails ?? {})
+            },
+            resolutionGuide: guide,
+            cause
+        })
+        this.key = key
+        this.existingElement = existingElement
+        this.incomingElement = incomingElement
+    }
+}
+
+/**
+ * Options bag for {@link KeyedBlueprintMismatchError}.
+ *
+ * @property key - Resolved session key whose blueprint disagreed.
+ * @property details - Extra diagnostics merged with `{ key }`.
+ * @property message - Custom message override.
+ * @property resolutionGuide - Fix hint override.
+ * @property cause - Underlying cause.
+ */
+export interface KeyedBlueprintMismatchErrorOptions {
+    readonly key: string
+    readonly details?: Record<string, unknown> | undefined
+    readonly message?: string | undefined
+    readonly resolutionGuide?: string | undefined
+    readonly cause?: unknown
+}
+
+/**
+ * Thrown by `mount()` when an existing session under the resolved key was
+ * created from a different blueprint instance.
+ *
+ * Keyed sessions carry their providers, bridges, storage, and hooks from the
+ * originating blueprint; silently reusing one under a different blueprint would
+ * mix service identities. Reuse the exact same blueprint reference for every
+ * mount of a key, or pass `onConflict: 'reset'` to dispose the previous session
+ * and mount a fresh one.
+ *
+ * The constructor accepts either a key string or a full options bag.
+ *
+ * @param keyOrOptions - Resolved key or
+ * {@link KeyedBlueprintMismatchErrorOptions} bag.
+ * @returns A `KeyedBlueprintMismatchError` with
+ * `code === 'KEYED_BLUEPRINT_MISMATCH'`.
+ *
+ * @example
+ * ```ts
+ * import { mount } from '@sandlada/document-context'
+ *
+ * const mountA = mount(blueprintA, { key: 'panel' })
+ * mountA(host)
+ * // Throws when a different blueprint claims the same key:
+ * // mount(blueprintB, { key: 'panel' })(host)
+ * ```
+ */
+export class KeyedBlueprintMismatchError extends DocumentContextError {
+    readonly key: string
+
+    constructor(keyOrOptions: string | KeyedBlueprintMismatchErrorOptions) {
+        const isOptions = typeof keyOrOptions === 'object' && keyOrOptions !== null
+        const key = isOptions
+            ? (keyOrOptions as KeyedBlueprintMismatchErrorOptions).key
+            : (keyOrOptions as string)
+        const customMessage = isOptions
+            ? (keyOrOptions as KeyedBlueprintMismatchErrorOptions).message
+            : undefined
+        const guide = (isOptions
+            ? (keyOrOptions as KeyedBlueprintMismatchErrorOptions).resolutionGuide
+            : undefined) ??
+            `Reuse the exact same blueprint instance for every mount of key '${key}', or pass onConflict: 'reset' to dispose the previous session and mount a fresh one.`
+        const cause = isOptions
+            ? (keyOrOptions as KeyedBlueprintMismatchErrorOptions).cause
+            : undefined
+        const extraDetails = isOptions
+            ? (keyOrOptions as KeyedBlueprintMismatchErrorOptions).details
+            : undefined
+
+        const message = customMessage ??
+            `Keyed session blueprint mismatch for key '${key}': the existing session was created from a different blueprint instance.`
+
+        super({
+            code: 'KEYED_BLUEPRINT_MISMATCH',
+            message,
+            details: {
+                key,
+                ...(extraDetails ?? {})
+            },
+            resolutionGuide: guide,
+            cause
+        })
+        this.key = key
+    }
+}

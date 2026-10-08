@@ -196,14 +196,15 @@ withHook('mount', (session) => {
 })
 ```
 
-#### `mount(blueprint)(element)`
-Execution boundary that activates the runtime `ISession` on a physical `HTMLElement`.
+#### `mount(blueprint, options?)(element)`
+Execution boundary that activates the runtime `ISession` on a physical `HTMLElement`. Pass `{ key }` for keyed identity: the session is registered per document and automatically resuscitates (same identity, state, and scoped services) when the same key mounts on a replacement host — an HTMX swap or framework re-render. `suspensionTtlMs` controls the grace period (default 50ms) and `onConflict` (`'throw'` | `'evict'` | `'reset'`) the collision policy.
 ```ts
 const session = mount(appBlueprint)(document.getElementById('app-root')!)
+const mountPanel = mount(appBlueprint, { key: 'cart-panel' })
 ```
 
-#### `mountAsync(blueprint)(element)`
-Asynchronous mount boundary awaiting eager storage hydration and async initialization.
+#### `mountAsync(blueprint, options?)(element)`
+Asynchronous mount boundary awaiting eager storage hydration and async initialization. Accepts the same keyed options as `mount`.
 ```ts
 const session = await mountAsync(appBlueprint)(document.getElementById('app-root')!)
 ```

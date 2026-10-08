@@ -288,14 +288,22 @@ export function withHook<
 所有執行期動詞嚴格遵循 `verb(config)(target)` 柯里化簽名：
 
 ```ts
-// 1. 物理掛載邊界
+// 1. 物理掛載邊界 (支援 Keyed 身分延續、衝突政策與自動復甦)
+export interface IMountOptions {
+    readonly key?: string    // 權威身分；正規化後寫回 data-context-key 投影
+    readonly suspensionTtlMs?: number    // 預設 50；0 = 立即銷毀；Infinity = 永不自動銷毀 (advanced)
+    readonly onConflict?: 'throw' | 'evict' | 'reset'    // 預設 'throw'
+}
+
 export function mount<S extends Record<PropertyKey, unknown>, Services>(
-    blueprint: IContextBlueprint<S, Services>
+    blueprint: IContextBlueprint<S, Services>,
+    options?: IMountOptions
 ): (element: HTMLElement) => ISession<S, Services>
 
-// 2. 阻塞式非同步掛載 (等待非同步存儲與關鍵服務水合完成)
+// 2. 阻塞式非同步掛載 (等待非同步存儲與關鍵服務水合完成；選項同 mount)
 export function mountAsync<S extends Record<PropertyKey, unknown>, Services>(
-    blueprint: IContextBlueprint<S, Services>
+    blueprint: IContextBlueprint<S, Services>,
+    options?: IMountOptions
 ): (element: HTMLElement) => Promise<ISession<S, Services>>
 
 // 3. 狀態快照讀取 (Select)
@@ -400,7 +408,7 @@ const chartBlueprint = pipe(
         analytics.track('chart_unmounted', { id: session.target.id })
     }),
 
-    // 3. Suspend / Resuscitate 鉤子：針對 Keyed Session 的 50ms 寬限復甦
+    // 3. Suspend / Resuscitate 鉤子：針對 Keyed Session 的寬限復甦 (TTL 可配置，預設 50ms)
     withHook('suspend', (session) => {
         // 節點暫時脫離文檔，暫停高耗能動畫渲染
         pauseAnimationLoop()
@@ -445,9 +453,9 @@ const userBlueprint = pipe(
 | 事件名稱 | 觸發時機 | `event.detail` 攜帶資料 | 說明 |
 | :--- | :--- | :--- | :--- |
 | `context-mount` | Session 完成水合並進入 Mounted 態 | `{ session }` | 宿主節點掛載完成 |
-| `context-dispose` | Session 調用 dispose 或 GC 徹底銷毀 | `{ sessionKey }` | 宿主節點上下文已銷毀 |
-| `context-suspend` | Keyed 節點脫離文檔進入 50ms 寬限期 | `{ sessionKey, ttl: 50 }` | 宿主節點進入掛起態 |
-| `context-resuscitate` | Keyed 節點在寬限期內於新 DOM 復甦 | `{ session, newTarget }` | 宿主節點完成復甦 |
+| `context-dispose` | Session 調用 dispose 或 GC 徹底銷毀 | `{ sessionKey }` | 宿主節點上下文已銷毀 (讀取 resolved key) |
+| `context-suspend` | Keyed 節點脫離文檔進入寬限期 | `{ sessionKey, ttl }` | `ttl` = resolved `suspensionTtlMs` (預設 50) |
+| `context-resuscitate` | Keyed 會話復甦 (新宿主掛載 / 同節點重連 / 手動 API) | `{ session, newTarget }` | 宿主節點完成復甦 |
 | `context-adopt` | 節點被 adoptNode 遷移至新 Document | `{ newDocument }` | 跨文檔遷移完成 |
 
 
@@ -636,14 +644,14 @@ stateDiagram-v2
     Phase3_Mounted --> Phase4_Suspended: 節點脫離文檔 (node.isConnected === false)
     note right of Phase4_Suspended
         Phase 4: 掛起寬限期 (Suspended, 僅限 Keyed Session)
-        啟動 50ms TTL 定時器
-        DOM 寫入暫停並排入 Dirty Queue，StateStore 保持活躍
+        啟動 suspensionTtlMs TTL 定時器 (預設 50ms；0 = 不安裝，立即銷毀)
+        DOM 投影暫停，StateStore/訂閱/storage 照常演進
     end note
 
-    Phase4_Suspended --> Phase5_Resuscitated: 相同 Key 的新 DOM 節點掛載 (Re-hydrate)
+    Phase4_Suspended --> Phase5_Resuscitated: 相同 Key 的宿主掛載 (mount / 同節點重連 / 手動復甦)
     note left of Phase5_Resuscitated
         Phase 5: 復甦重連期
-        無縫轉移 Session 核心，刷新 Dirty Queue 至新 DOM，重綁監聽
+        無縫轉移 Session 核心，重綁宿主整合並對新 DOM 全量重投影 (state 勝出)
     end note
 
     Phase5_Resuscitated --> Phase3_Mounted: 復甦完成
@@ -729,7 +737,7 @@ stateDiagram-v2
    - TC39 Signals 計算適配器 (`toSignal(session, selector)`)
    - 雙向屬性橋接微任務隊列 (`withBridge`)
    - 跨標籤頁廣播與 Web Locks 持久化 (`withStorage`)
-4. **Suspended Dirty Queue (掛起髒隊列態)**：當 Session 處於 `Suspended` 期間，外部業務非同步回調調用 `update()` 時，狀態照常在記憶體中演進，但暫停向 DOM 寫入，改為排入 `Dirty Queue`，待復甦時一次性批處理刷新至新 DOM 節點。
+4. **Suspended Re-Projection (掛起投影暫停態)**：當 Session 處於 `Suspended` 期間，外部業務非同步回調調用 `update()` 時，狀態照常在記憶體中演進（訂閱者與儲存同步照常運作），僅暫停向 DOM 投影；待復甦時由宿主綁定對新 DOM 節點執行一次**全量重新投影**（state 勝出，不重跑水合），取代逐筆回放。
 5. **Finalized & Poisoned (終結毒化態)**：Session 銷毀後，狀態 Store 進入毒化保護模式。任何殘餘的非同步操作調用 `update()` 均靜默返回 `false`（No-op），杜絕全局崩潰。
 
 #### 6.4.2 雙向屬性橋接微任務事務生命周期 (Bridge Transaction Lifecycle)
@@ -775,9 +783,9 @@ stateDiagram-v2
 │ 節點短暫拖拽重排   │ `Disconnected` ➔ │ `Mounted` 保持   │ 保持現狀         │ 暫緩 DOM 寫入    │ `queueMicrotask` 二次確認； │
 │ (Reparenting)      │ `Connected`      │ (防誤殺機制生效) │ (不重置服務)     │ (微任務後恢復)   │ 取消銷毀，零中斷零丟失      │
 ├────────────────────┼──────────────────┼──────────────────┼──────────────────┼──────────────────┼─────────────────────────────┤
-│ HTMX / VDOM 置換   │ 舊節點 `Disconn` │ `Mounted` ➔      │ 保持 Scoped 實例 │ 寫入轉移至       │ 50ms Grace Period 寬限期；  │
-│ (Keyed Session)    │ 新節點 `Connect` │ `Suspended` ➔    │ 不銷毀           │ `Dirty Queue` ➔  │ 新 DOM 掛載後無縫轉移核心； │
-│                    │                  │ `Resuscitated`   │                  │ 批次刷新至新 DOM │ 刷新 Dirty Queue 狀態       │
+│ HTMX / VDOM 置換   │ 舊節點 `Disconn` │ `Mounted` ➔      │ 保持 Scoped 實例 │ 投影暫停 ➔ 全量  │ `suspensionTtlMs` 寬限期；  │
+│ (Keyed Session)    │ 新節點 `Connect` │ `Suspended` ➔    │ 不銷毀           │ 重新投影至新 DOM │ `mount` 自動復甦或同節點    │
+│                    │                  │ `Resuscitated`   │                  │ (state 勝出)     │ 重連復甦；狀態無損          │
 ├────────────────────┼──────────────────┼──────────────────┼──────────────────┼──────────────────┼─────────────────────────────┤
 │ 節點徹底自文檔刪除 │ `Disconnected` ➔ │ `Mounted` ➔      │ 觸發 Service 銷毀│ 狀態毒化保護；   │ 釋放所有 RxJS 訂閱；        │
 │ (或手動 dispose)   │ `GC Collected`   │ `Disposed`       │ 清除 In-flight   │ 殘留 update() 轉 │ 觸發 `session.abortSignal`；│
@@ -807,7 +815,7 @@ CentralizedRootObserver ──> 批次收集 removedNodes
                    ▼                           ▼
             [普通匿名 Session]           [具備 Keyed 的 Session]
                    │                           │
-          立即觸發 dispose(session)     進入 SUSPENDED 狀態機 (TTL 50ms)
+          立即觸發 dispose(session)     進入 SUSPENDED 狀態機 (resolved TTL)
 ```
 
 1. **WeakRef 註冊表與 FinalizationRegistry**：
@@ -1216,7 +1224,7 @@ classDiagram
 ├────┼─────────────────────────────┼─────────────────────────────────┼────────────────────────────┤
 │ 08 │ 生命週期與記憶體            │ DOM 拖拽/排序暫時脫離文檔被誤殺 │ queueMicrotask isConnected │
 ├────┼─────────────────────────────┼─────────────────────────────────┼────────────────────────────┤
-│ 09 │ 生命週期與記憶體            │ VDOM/HTMX 節點銷毀重建狀態丟失  │ Keyed 50ms 寬限期復甦狀態機│
+│ 09 │ 生命週期與記憶體            │ VDOM/HTMX 節點銷毀重建狀態丟失  │ Keyed 寬限期自動復甦+弱註冊表│
 ├────┼─────────────────────────────┼─────────────────────────────────┼────────────────────────────┤
 │ 10 │ 生命週期與記憶體            │ 跨 Document 遷移 (adoptedNode)  │ adoptedCallback 遷移監聽   │
 ├────┼─────────────────────────────┼─────────────────────────────────┼────────────────────────────┤
@@ -1286,12 +1294,14 @@ classDiagram
   ├── ⚡ 非同步依賴注入 (withAsyncProvider, injectAsync, Promise Coalescing, 失敗自癒)
   ├── ⚡ 非同步持久化存儲與水合 (mountAsync, IAsyncStorageAdapter, IndexedDB, BroadcastChannel)
   ├── 🧩 多值集合注入 (multi: true, injectAll 累積收集協議)
-  ├── 🛡️ Keyed 標識 (data-context-key) 與 50ms 寬限期復甦狀態機
+  ├── 🛡️ Keyed 一等公民 (mount 自動復甦、per-Document 弱註冊表、全量重投影、mount 選項)
   └── 🎨 TC39 Explicit Resource Management (Symbol.dispose / Symbol.asyncDispose)
 
 [未來前瞻里程碑 (v1.2-Ecosystem & Standards)]
   ├── 🔮 TC39 Signals Proposal 雙向適配器 (@sandlada/document-context/signals)
   ├── 🔮 TC39 Decorators Stage 3 類裝飾器 (@provide, @inject)
-  └── 🔮 Form-Associated Custom Elements (FACE) ElementInternals 深層原生整合
+  ├── 🔮 Form-Associated Custom Elements (FACE) ElementInternals 深層原生整合
+  ├── 🔮 Keyed 全自動接管 (autoAdoptKeyed: 新節點插入即復甦) 與復甦重水合 (rehydrateOnResuscitate)
+  └── 🔮 Keyed 寬限期診斷 (remainingTtlMs 暴露)
 ```
 

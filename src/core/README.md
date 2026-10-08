@@ -29,13 +29,16 @@ const blueprint = pipe(
 
 | Export | Purpose |
 | --- | --- |
-| `mount(blueprint)(element)` | Execution boundary, returns the `ISession`. |
-| `mountAsync(blueprint)(element)` | Async mount awaiting storage hydration. |
+| `mount(blueprint, options?)(element)` | Execution boundary, returns the `ISession`. `{ key, suspensionTtlMs, onConflict }` enables keyed identity + auto-resuscitation. |
+| `mountAsync(blueprint, options?)(element)` | Async mount awaiting storage hydration; same options. |
 | `select(selector)(session)` | Synchronous state snapshot reader. |
 | `update(updater)(session)` | State transition, returns `false` as a safe no-op when disposed. |
 | `subscribe(listener)(session)` | Reactive subscription, returns an unsubscribe function. |
 | `dispose(session)` | LIFO teardown, store poisoning, `abortSignal` abort. |
 | `readErrorStream(session)` | Non-fatal `Observable<DocumentContextError>`. |
+| `findKeyedSession(key, document?)` | Diagnostic lookup of a keyed session (may be suspended). |
+| `unregisterKeyedSession(key, document?)` | Retires a keyed identity and clears the resolved key. |
+| `resuscitateKeyedSession(key, newTarget)` | Manual escape hatch reattaching a suspended session. |
 
 ```ts
 import { mount, select, update, subscribe } from '@sandlada/document-context/core'

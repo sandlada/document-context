@@ -4,6 +4,7 @@ import {
     type IBridgeOptions,
     type IContextBlueprint,
     type ILifecycleHooks,
+    type IMountOptions,
     type ISession,
     type IStorageOptions,
     type ServiceLifecycle,
@@ -77,5 +78,24 @@ describe('Core Types & Helpers', () => {
         }
         expect(typeof hooks.mount).toBe('function')
         expect(typeof hooks.dispose).toBe('function')
+    })
+
+    it('should expose mount options and the keyed session surface', () => {
+        const options: IMountOptions = {
+            key: 'cart-panel',
+            suspensionTtlMs: 50,
+            onConflict: 'evict'
+        }
+        expect(options.key).toBe('cart-panel')
+        expect(options.suspensionTtlMs).toBe(50)
+        expect(options.onConflict).toBe('evict')
+
+        const session = {
+            key: 'cart-panel',
+            isSuspended: false
+        } as unknown as ISession<{ count: number }>
+
+        expect(session.key).toBe('cart-panel')
+        expect(session.isSuspended).toBe(false)
     })
 })

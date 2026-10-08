@@ -6,6 +6,7 @@ import {
 } from '../core/errors'
 import { getInternalSession } from '../core/session-internal'
 import { registerMountPlugin } from '../core/mount'
+import { registerHostActivation } from '../core/host-activation'
 import { trackElementForGC } from './observer'
 import type {
     IServiceRegistration,
@@ -295,10 +296,14 @@ export function setupProviderResponder(
     }
 }
 
-// Auto-register DOM mount plugin
+// Auto-register DOM mount plugin: host activations rebind on resuscitation
 registerMountPlugin((session) => {
-    trackElementForGC(session.target, session)
-    return setupProviderResponder(session.target, session)
+    registerHostActivation(session, {
+        bind: (target) => {
+            trackElementForGC(target, session)
+            return setupProviderResponder(target, session)
+        }
+    })
 })
 
 /**

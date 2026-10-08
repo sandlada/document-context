@@ -1,5 +1,7 @@
 import { Observable, EMPTY } from 'rxjs'
 import { DocumentContextError } from './errors'
+import { teardownHostActivations } from './host-activation'
+import { unregisterKeyedSessionEntry } from './keyed-registry'
 import {
     getInternalSession,
     removeElementSession
@@ -11,10 +13,13 @@ import type { ISession } from './types'
  *
  * Idempotent: disposing twice (or disposing a session with no internals) is a
  * safe no-op. The pipeline is: mark `isDisposed` and drop the element mapping
- * → `abortController.abort()` (cancelling `session.abortSignal` consumers) →
- * run blueprint `dispose` hooks LIFO → run mount/plugin cleanups LIFO →
- * dispatch a bubbling, composed `context-dispose` CustomEvent with
- * `detail: { sessionKey }`. Synchronous throws and async rejections inside
+ * → cancel a pending suspension TTL timer → `abortController.abort()`
+ * (cancelling `session.abortSignal` consumers) → tear down host activations
+ * (bridges, provider responder, GC tracking) → unregister the keyed identity
+ * entry → run blueprint `dispose` hooks LIFO → run mount/plugin cleanups LIFO
+ * → dispatch a bubbling, composed `context-dispose` CustomEvent with
+ * `detail: { sessionKey }` (sourced from the session's resolved key, so it
+ * survives attribute removal). Synchronous throws and async rejections inside
  * hooks or cleanups are caught and routed to the session error stream as
  * `DISPOSE_HOOK_ERROR` / `MOUNT_CLEANUP_ERROR` instead of propagating.
  *
@@ -43,12 +48,25 @@ export function dispose<S extends Record<PropertyKey, any>, Services>(
     }
 
     internal.isDisposed = true
-    removeElementSession(session.target)
+    internal.isSuspended = false
+    removeElementSession(internal.target)
+
+    if (internal.suspensionTimer !== undefined) {
+        clearTimeout(internal.suspensionTimer)
+        internal.suspensionTimer = undefined
+    }
 
     try {
         internal.abortController.abort()
     } catch (err) {
         // AbortController abort should not throw, but sandbox just in case
+    }
+
+    // Tear down host-scoped integrations before user hooks/cleanups
+    teardownHostActivations(session)
+
+    if (internal.key !== undefined) {
+        unregisterKeyedSessionEntry(internal.target.ownerDocument, internal.key)
     }
 
     // 1. Run dispose hooks in LIFO order
@@ -112,12 +130,11 @@ export function dispose<S extends Record<PropertyKey, any>, Services>(
 
     // 3. Dispatch native DOM context-dispose event
     try {
-        const sessionKey = session.target.getAttribute('data-context-key') ?? undefined
-        session.target.dispatchEvent(
+        internal.target.dispatchEvent(
             new CustomEvent('context-dispose', {
                 bubbles: true,
                 composed: true,
-                detail: { sessionKey }
+                detail: { sessionKey: internal.key }
             })
         )
     } catch (err) {
@@ -130,10 +147,10 @@ export function dispose<S extends Record<PropertyKey, any>, Services>(
  *
  * The stream is a `ReplaySubject<DocumentContextError>(20)` held on session
  * internals, so late subscribers replay up to the last 20 errors. Sources
- * include mount plugin/hook failures, dispose cleanup failures, storage parse
- * failures, and bridge errors. Fatal DI throws (`UnknownServiceError`,
- * `CircularDependencyError`) still throw synchronously at the call site and
- * are not duplicated here.
+ * include mount plugin/hook failures, suspend/resuscitate/host-activation
+ * failures, dispose cleanup failures, storage parse failures, and bridge
+ * errors. Fatal DI throws (`UnknownServiceError`, `CircularDependencyError`)
+ * still throw synchronously at the call site and are not duplicated here.
  *
  * Exposes only the `Observable` interface; the underlying subject stays
  * encapsulated and RxJS never leaks into the public API beyond this type.

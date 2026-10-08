@@ -18,9 +18,12 @@ import type { IContextBlueprint, ISession, ServiceToken } from './types'
  * @property isDisposed - Permanent terminal flag.
  * @property isSuspended - Parked-in-TTL flag for keyed sessions.
  * @property target - Current host element (repointed on resuscitation).
- * @property dirtyQueue - Updaters accumulated while suspended, replayed on
- * resuscitation.
- * @property sessionKey - Value of `data-context-key`, if present.
+ * @property key - Resolved identity key for keyed sessions, `undefined` for
+ * anonymous sessions. Cleared by `unregisterKeyedSession()`.
+ * @property suspensionTtlMs - Grace period in milliseconds applied when the
+ * host disconnects; `0` disposes immediately and `Infinity` never
+ * auto-disposes. Resolved from `IMountOptions.suspensionTtlMs` (default 50).
+ * @property suspensionTimer - Pending TTL timer handle while suspended.
  */
 export interface IInternalSessionState<S extends Record<PropertyKey, any> = Record<PropertyKey, any>> {
     stateSubject: BehaviorSubject<S>
@@ -32,8 +35,9 @@ export interface IInternalSessionState<S extends Record<PropertyKey, any> = Reco
     isDisposed: boolean
     isSuspended: boolean
     target: HTMLElement
-    dirtyQueue: Array<(state: S) => Partial<S> | S>
-    sessionKey?: string | undefined
+    key?: string | undefined
+    suspensionTtlMs: number
+    suspensionTimer?: ReturnType<typeof setTimeout> | undefined
 }
 
 const sessionInternalMap = new WeakMap<ISession<any, any>, IInternalSessionState<any>>()
@@ -62,19 +66,23 @@ export function isDev(): boolean {
 
 /**
  * Allocates fresh internals for a mount: seeds the state subject from the
- * blueprint, creates the error replay subject, abort controller, and empty
- * caches, and captures the `data-context-key` session key when present.
+ * blueprint, creates the error replay subject, abort controller, empty caches,
+ * and captures the resolved session key plus the suspension TTL.
  *
  * @param target - Host element being mounted.
  * @param blueprint - Originating blueprint supplying the seed state.
+ * @param key - Resolved identity key from `resolveSessionKey()`, if any.
+ * @param suspensionTtlMs - Resolved grace period in milliseconds; defaults to
+ * the library default of 50.
  * @returns A new `IInternalSessionState` with `isDisposed: false` and
  * `isSuspended: false`.
  */
 export function createInternalSessionState<S extends Record<PropertyKey, any>>(
     target: HTMLElement,
-    blueprint: IContextBlueprint<S, any>
+    blueprint: IContextBlueprint<S, any>,
+    key?: string | undefined,
+    suspensionTtlMs: number = 50
 ): IInternalSessionState<S> {
-    const sessionKey = target.getAttribute('data-context-key') ?? undefined
     return {
         stateSubject: new BehaviorSubject<S>(blueprint.initialState),
         errorSubject: new ReplaySubject<DocumentContextError>(20),
@@ -85,8 +93,9 @@ export function createInternalSessionState<S extends Record<PropertyKey, any>>(
         isDisposed: false,
         isSuspended: false,
         target,
-        dirtyQueue: [],
-        sessionKey
+        key,
+        suspensionTtlMs,
+        suspensionTimer: undefined
     }
 }
 
@@ -146,7 +155,8 @@ export function setElementSession<S extends Record<PropertyKey, any> = Record<Pr
 }
 
 /**
- * Drops the element-to-session mapping (called once per `dispose()`).
+ * Drops the element-to-session mapping (called on `dispose()` and when a keyed
+ * session is parked into the suspended state).
  * The session handle itself stays usable for `isDisposed` checks; only the
  * reverse lookup is removed.
  *

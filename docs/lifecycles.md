@@ -8,7 +8,7 @@ Four orthogonal lifecycles cooperate on every mount. Each has its own owner and 
 
 ## 2. Session state machine
 
-`Blueprint` → `Initializing` → `Mounted` → `Suspended` (keyed, 50ms TTL) → `Resuscitated` → `Disposed`. Keyed sessions (`data-context-key`) pause DOM writes into a dirty queue while suspended and flush it on resuscitation. Disposed sessions poison their store: late `update()` calls safely return `false` instead of throwing.
+`Blueprint` → `Initializing` → `Mounted` → `Suspended` (keyed; `suspensionTtlMs`, default 50ms) → `Resuscitated` → `Disposed`. Keyed sessions (`mount(bp, { key })` / `data-context-key`) pause DOM projection while suspended — state, subscribers, and storage keep evolving — and re-project the full state onto the new host on resuscitation (no replay queue). Disposed sessions poison their store: late `update()` calls safely return `false` instead of throwing.
 
 ## 3. Service lifecycle
 

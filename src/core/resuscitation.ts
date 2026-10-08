@@ -1,47 +1,24 @@
+import { resuscitateSession } from './keyed-lifecycle'
 import {
-    getInternalSession,
-    setElementSession
-} from './session-internal'
+    lookupKeyedSession,
+    unregisterKeyedSessionEntry
+} from './keyed-registry'
+import { getInternalSession } from './session-internal'
 import type { ISession } from './types'
 
-const keyedSessionMap = new Map<string, ISession<any, any>>()
-
 /**
- * Registers a live session under a `data-context-key` for suspend/resuscitate.
+ * Looks up the live session parked under a keyed identity.
  *
- * Keyed sessions survive host detachment: instead of immediate disposal, the
- * observer parks them in the suspended state for a 50ms TTL during which
- * `resuscitateKeyedSession()` can reattach them to a new host with state
- * intact. Overwrites any previous session under the same key.
+ * Registrations are automatic: `mount(bp, { key })` registers on creation and
+ * the entry survives host disconnection while the session is suspended. The
+ * result is per-document; pass the owning `Document` explicitly for iframe
+ * documents. The returned session may already be suspended or disposed —
+ * callers must check `session.isDisposed` (and `session.isSuspended` when the
+ * distinction matters).
  *
- * @param key - Value of the host `data-context-key` attribute.
- * @param session - Live session to park under the key.
- * @returns `void`.
- *
- * @example
- * ```ts
- * import { registerKeyedSession } from '@sandlada/document-context'
- *
- * registerKeyedSession('cart-panel', session)
- * ```
- */
-export function registerKeyedSession(
-    key: string,
-    session: ISession<any, any>
-): void {
-    keyedSessionMap.set(key, session)
-}
-
-/**
- * Looks up the live session parked under a `data-context-key`.
- *
- * Returns the registered session even while it is suspended (that is the
- * resuscitation window). Callers must still check `session.isDisposed`,
- * because expired or explicitly disposed sessions stay mapped until the TTL
- * timer or `unregisterKeyedSession()` clears them.
- *
- * @param key - Value of the `data-context-key` attribute.
- * @returns The parked `ISession`, or `undefined` when no session was
+ * @param key - Resolved session key (`options.key` or `data-context-key`).
+ * @param document - Owning document. Defaults to the global `document`.
+ * @returns The parked `ISession`, or `undefined` when no session is
  * registered under the key.
  *
  * @example
@@ -49,24 +26,29 @@ export function registerKeyedSession(
  * import { findKeyedSession } from '@sandlada/document-context'
  *
  * const existing = findKeyedSession('cart-panel')
- * if (existing && !existing.isDisposed) {
- *     console.log('reusing suspended session')
+ * if (existing && !existing.isDisposed && existing.isSuspended) {
+ *     console.log('suspended session awaiting a new host')
  * }
  * ```
  */
 export function findKeyedSession<S extends Record<PropertyKey, any> = Record<PropertyKey, any>>(
-    key: string
+    key: string,
+    document: Document = globalThis.document
 ): ISession<S, any> | undefined {
-    return keyedSessionMap.get(key)
+    return lookupKeyedSession<S>(document, key)
 }
 
 /**
- * Removes the session parked under a `data-context-key` without disposing it.
+ * Retires a keyed identity without disposing the session.
  *
- * Use when a keyed host is permanently retired and its suspended session
- * should no longer be resuscitable. Safe to call for unknown keys (no-op).
+ * Removes the registry entry and clears the session's resolved key, so a later
+ * host disconnection follows the anonymous deterministic-disposal path and no
+ * resuscitation can occur. Use when a keyed host is permanently retired while
+ * the session itself stays alive; for full teardown prefer `dispose()`.
+ * Safe to call for unknown keys (no-op).
  *
- * @param key - Value of the `data-context-key` attribute.
+ * @param key - Resolved session key to retire.
+ * @param document - Owning document. Defaults to the global `document`.
  * @returns `void`.
  *
  * @example
@@ -76,28 +58,36 @@ export function findKeyedSession<S extends Record<PropertyKey, any> = Record<Pro
  * unregisterKeyedSession('cart-panel')
  * ```
  */
-export function unregisterKeyedSession(key: string): void {
-    keyedSessionMap.delete(key)
+export function unregisterKeyedSession(
+    key: string,
+    document: Document = globalThis.document
+): void {
+    const session = lookupKeyedSession(document, key)
+    if (session) {
+        const internal = getInternalSession(session)
+        if (internal) {
+            internal.key = undefined
+        }
+    }
+    unregisterKeyedSessionEntry(document, key, session ?? undefined)
 }
 
 /**
- * Reattaches a suspended keyed session to a new host element (resuscitation).
+ * Reattaches a suspended (or disconnected) keyed session to a replacement
+ * host element — the manual escape hatch of the automatic resuscitation
+ * pipeline.
  *
- * Clears the suspended flag, repoints internal `target` at `newTarget`,
- * re-caches the session under the new element, replays the queued dirty
- * updates accumulated via `update()` during suspension (in order, then emits
- * once), runs blueprint `resuscitate` hooks as `(session, newTarget)`, and
- * dispatches a bubbling, composed `context-resuscitate` CustomEvent with
- * `detail: { session, newTarget }`. Hook throws are sandboxed.
+ * Runs the shared resuscitation procedure: clears suspension, cancels the TTL
+ * timer, repoints the target, rebinds host activations with a full state-to-DOM
+ * projection, runs `resuscitate` hooks, and dispatches `context-resuscitate`.
+ * Refuses to steal a session whose current host is still connected (use
+ * `onConflict: 'evict'` at the mount boundary for intentional hot transfers).
  *
- * Returns `undefined` when no session is registered under `key`, when the
- * registered session is disposed, or when its internals are gone.
- *
- * @param key - `data-context-key` identifier the session was parked under.
- * @param newTarget - New physical host element, typically the replacement node
- * carrying the same key.
+ * @param key - Resolved session key the session was parked under.
+ * @param newTarget - Replacement host element; its `ownerDocument` selects the
+ * registry.
  * @returns The resuscitated `ISession`, or `undefined` when nothing
- * resuscitable was found.
+ * resuscitable was found or the current host is still connected.
  *
  * @example
  * ```ts
@@ -111,7 +101,8 @@ export function resuscitateKeyedSession<S extends Record<PropertyKey, any> = Rec
     key: string,
     newTarget: HTMLElement
 ): ISession<S, any> | undefined {
-    const session = findKeyedSession<S>(key)
+    const document = newTarget.ownerDocument
+    const session = lookupKeyedSession<S>(document, key)
     if (!session || session.isDisposed) {
         return undefined
     }
@@ -121,45 +112,10 @@ export function resuscitateKeyedSession<S extends Record<PropertyKey, any> = Rec
         return undefined
     }
 
-    internal.isSuspended = false
-    internal.target = newTarget
-    setElementSession(newTarget, session)
-
-    // Flush dirty queue
-    if (internal.dirtyQueue.length > 0) {
-        let state = internal.stateSubject.getValue()
-        for (const updater of internal.dirtyQueue) {
-            const partial = updater(state)
-            state = { ...state, ...partial }
-        }
-        internal.dirtyQueue = []
-        internal.stateSubject.next(state)
+    if (!internal.isSuspended && internal.target.isConnected) {
+        return undefined
     }
 
-    // Trigger resuscitate hooks
-    const resuscitateHooks = session.blueprint.hooks.filter(
-        (h) => h.event === 'resuscitate'
-    )
-    for (const hook of resuscitateHooks) {
-        try {
-            hook.handler(session, newTarget)
-        } catch {
-            // Sandbox
-        }
-    }
-
-    // Dispatch native context-resuscitate DOM CustomEvent
-    try {
-        newTarget.dispatchEvent(
-            new CustomEvent('context-resuscitate', {
-                bubbles: true,
-                composed: true,
-                detail: { session, newTarget }
-            })
-        )
-    } catch {
-        // Suppress
-    }
-
+    resuscitateSession(session, newTarget)
     return session
 }

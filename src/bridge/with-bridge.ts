@@ -1,5 +1,6 @@
 import { update } from '../core/update'
 import { getInternalSession } from '../core/session-internal'
+import { registerHostActivation } from '../core/host-activation'
 import type {
     IBridgeOptions,
     IBridgePropertyRule,
@@ -16,10 +17,13 @@ import { readDomProperty, writeDomProperty } from './property-path'
 /**
  * Pure Phase 1 operator that registers one bidirectional DOM bridge.
  *
- * Appends `options` to `blueprint.bridges` and adds a `mount` hook that calls
- * `setupBridge(session.target, session, options)` at mount time. Multiple
- * `withBridge()` calls accumulate in order; each activates its own
- * subscription and listeners. The operator itself is side-effect free.
+ * Appends `options` to `blueprint.bridges` and adds a `mount` hook that
+ * registers the bridge as a host activation, binding `setupBridge()` to the
+ * session target. Host activations are rebound on resuscitation, so a keyed
+ * session revived onto a new host keeps syncing against that host, while
+ * state-to-DOM writes are paused during suspension. Multiple `withBridge()`
+ * calls accumulate in order; each activates its own subscription and
+ * listeners. The operator itself is side-effect free.
  *
  * @param options - Bridge bindings; see {@link IBridgeOptions}. Only listed
  * state keys synchronize; `events` defaults to `['input', 'change']` and
@@ -55,7 +59,10 @@ export function withBridge<S extends Record<PropertyKey, any> = Record<PropertyK
             {
                 event: 'mount',
                 handler: (session: ISession<any, any>) =>
-                    setupBridge(session.target, session, options as IBridgeOptions<any>)
+                    registerHostActivation(session, {
+                        bind: (target: HTMLElement) =>
+                            setupBridge(target, session, options as IBridgeOptions<any>)
+                    })
             }
         ]
     })
@@ -64,14 +71,16 @@ export function withBridge<S extends Record<PropertyKey, any> = Record<PropertyK
 /**
  * Activates one bidirectional bridge on an already-mounted host element.
  *
- * Normally invoked by the `withBridge` mount hook, not by hand. The pipeline
- * is: initial state-to-DOM sync inside a `writeWithTransaction` lock →
+ * Normally invoked through the `withBridge` host activation, not by hand. The
+ * pipeline is: initial state-to-DOM sync inside a `writeWithTransaction` lock →
  * reactive state-to-DOM subscription (coalesced via `queueMicrotask` unless
  * `batch === false`, with `value` paths written through
  * `safeWriteValueWithCursor`) → DOM-to-state listener on each `events` entry
  * that re-reads every bound path, diffs with `Object.is`, and pushes changes
  * via `update()`. Internal (transaction-locked) writes are ignored on the way
- * back, breaking echo loops; disposed sessions stop syncing.
+ * back, breaking echo loops; disposed sessions stop syncing, and suspended
+ * sessions skip DOM writes until the activation rebinds with a full
+ * re-projection.
  *
  * @param element - Mounted host element (bridge endpoint).
  * @param session - Live session supplying state and disposal status.
@@ -140,13 +149,19 @@ export function setupBridge<S extends Record<PropertyKey, any>>(
     }
 
     const sub = internal.stateSubject.subscribe((state) => {
+        // Suspended sessions keep evolving in memory; DOM projection resumes
+        // through the full re-projection performed when the bridge rebinds.
+        if (internal.isSuspended || session.isDisposed) {
+            return
+        }
+
         if (bridgeOptions.batch !== false) {
             pendingState = state
             if (!isScheduled) {
                 isScheduled = true
                 queueMicrotask(() => {
                     isScheduled = false
-                    if (pendingState && !session.isDisposed) {
+                    if (pendingState && !session.isDisposed && !internal.isSuspended) {
                         flushDomWrite(pendingState)
                     }
                 })
@@ -158,7 +173,7 @@ export function setupBridge<S extends Record<PropertyKey, any>>(
 
     // 3. DOM Events -> JS State Sync
     const domEventListener = (_e: Event) => {
-        if (isInternalWrite(element) || session.isDisposed) {
+        if (isInternalWrite(element) || session.isDisposed || internal.isSuspended) {
             return
         }
 

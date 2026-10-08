@@ -26,4 +26,4 @@ Calling `inject` on a node with `isConnected === false` falls back to the global
 
 ## Observer and GC
 
-The centralized root `MutationObserver` tracks sessions with `WeakMap`/`WeakRef` (zero strong `HTMLElement` retention), confirms disconnects in a microtask to survive reparenting moves, migrates sessions across documents on `adoptNode`, and parks keyed sessions (`data-context-key`) in a 50ms suspended state before disposal.
+The centralized root `MutationObserver` tracks sessions with `WeakMap`/`WeakRef` (zero strong `HTMLElement` retention), confirms disconnects in a microtask to survive reparenting moves, migrates sessions across documents on `adoptNode`, and parks keyed sessions (`data-context-key`) in a suspended state (resolved `suspensionTtlMs`, default 50ms) before disposal. It also auto-resumes a suspended session when its own host node is re-inserted; a new host mounted under the same key resuscitates through `mount()`.

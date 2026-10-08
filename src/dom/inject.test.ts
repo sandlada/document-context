@@ -11,6 +11,7 @@ import { withProvider } from '../core/providers'
 import { update } from '../core/update'
 import { ContextRequestEvent } from './events'
 import { clearGlobalSingletons, inject, setGlobalSingleton } from './inject'
+import { startRootObserver, stopRootObserver, trackElementForGC } from './observer'
 
 describe('inject & W3C Context Protocol', () => {
     it('resolves a service directly from an ISession', () => {
@@ -138,5 +139,35 @@ describe('inject & W3C Context Protocol', () => {
         expect(() => {
             inject('serviceA')(session)
         }).toThrow(CircularDependencyError)
+    })
+
+    it('answers context-requests on a resuscitated host', async () => {
+        const el1 = document.createElement('div')
+        const el2 = document.createElement('div')
+        document.body.appendChild(el1)
+
+        startRootObserver(document)
+
+        const bp = pipe(
+            createContext({}),
+            withProvider('panel:token', () => 'panel-value')
+        )
+        const session = mount(bp, { key: 'inject-panel', suspensionTtlMs: 2000 })(el1)
+        trackElementForGC(el1, session)
+
+        document.body.removeChild(el1)
+        await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(session.isSuspended).toBe(true)
+
+        document.body.appendChild(el2)
+        const revived = mount(bp, { key: 'inject-panel' })(el2)
+        expect(revived).toBe(session)
+
+        expect(inject<string>('panel:token')(el2)).toBe('panel-value')
+        expect(inject<string>('panel:token')(session)).toBe('panel-value')
+
+        document.body.removeChild(el2)
+        stopRootObserver(document)
     })
 })

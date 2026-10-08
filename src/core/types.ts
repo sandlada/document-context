@@ -434,6 +434,41 @@ export interface IContextBlueprint<
     readonly hooks: ReadonlyArray<ILifecycleHookRegistration<S, Services>>
 }
 
+/**
+ * Options for the `mount()` / `mountAsync()` execution boundary.
+ *
+ * @property key - Authoritative session identity key. Overrides the
+ * `data-context-key` attribute, which is kept in sync as its declarative
+ * projection. Omit for anonymous one-element sessions.
+ * @property suspensionTtlMs - Grace period in milliseconds a keyed session
+ * stays suspended after its host disconnects before auto-disposal. Defaults to
+ * 50. `0` disposes immediately without entering the suspended state;
+ * `Infinity` keeps the session suspended until it is manually disposed or a
+ * new host mounts (advanced: the session holds memory indefinitely).
+ * @property onConflict - Conflict policy when a mount meets an existing keyed
+ * session. `'throw'` (default) raises `KeyedSessionConflictError` (connected
+ * duplicate) or `KeyedBlueprintMismatchError` (different blueprint
+ * instance); `'evict'` hot-transfers the same-blueprint session to the new
+ * element; `'reset'` disposes the previous session and mounts a fresh one.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount } from '@sandlada/document-context'
+ *
+ * const blueprint = createContext({ count: 0 })
+ * const mountPanel = mount(blueprint, {
+ *     key: 'cart-panel',
+ *     suspensionTtlMs: 200
+ * })
+ * mountPanel(document.getElementById('cart')!)
+ * ```
+ */
+export interface IMountOptions {
+    readonly key?: string | undefined
+    readonly suspensionTtlMs?: number | undefined
+    readonly onConflict?: 'throw' | 'evict' | 'reset' | undefined
+}
+
 // Opaque session brand. Prevents structural forgery of ISession handles.
 declare const SessionBrand: unique symbol
 
@@ -445,12 +480,20 @@ declare const SessionBrand: unique symbol
  * `AbortSignal` bound to the session lifetime. State itself is never stored on
  * this object; it lives in the internal `BehaviorSubject` keyed by WeakMap.
  *
- * @property target - Host element the blueprint was mounted on.
+ * @property target - Host element the blueprint was mounted on. A live
+ * getter: after a keyed resuscitation it points at the newest host, never at a
+ * detached previous host.
  * @property blueprint - Originating immutable blueprint.
  * @property abortSignal - Aborts when the session is disposed; pass to `fetch`
  * or async providers for cooperative cancellation.
  * @property isDisposed - `true` after `dispose()`; subsequent `update()` calls
  * silently no-op and return `false`.
+ * @property key - Resolved identity key for keyed sessions (`options.key` or
+ * the `data-context-key` attribute); `undefined` for anonymous sessions.
+ * Cleared by `unregisterKeyedSession()`.
+ * @property isSuspended - `true` while a keyed session's host is detached and
+ * the session is parked inside its suspension TTL awaiting resuscitation;
+ * `false` otherwise (including after disposal).
  *
  * @example
  * ```ts
@@ -475,6 +518,8 @@ export interface ISession<
     readonly blueprint: IContextBlueprint<S, Services>
     readonly abortSignal: AbortSignal
     readonly isDisposed: boolean
+    readonly key?: string | undefined
+    readonly isSuspended: boolean
     readonly [Symbol.dispose]: () => void
     readonly [Symbol.asyncDispose]: () => Promise<void>
 }

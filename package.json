@@ -1,6 +1,6 @@
 {
     "name": "@sandlada/document-context",
-    "version": "0.0.1-20260822.a",
+    "version": "0.0.1-20261008.a",
     "description": "A function-first, DOM-anchored IoC container and reactive state management library for modern browsers, Astro, Web Components, and micro-frontends.",
     "author": "Kai Orion",
     "license": "MIT",
