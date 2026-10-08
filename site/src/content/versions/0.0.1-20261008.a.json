@@ -1,0 +1,54 @@
+{
+  "sidebar": [
+    {
+      "label": "Start Here",
+      "items": [
+        "getting-started",
+        "core-concepts"
+      ]
+    },
+    {
+      "label": "Guides",
+      "items": [
+        "lifecycles",
+        "w3c-protocol"
+      ]
+    },
+    {
+      "label": "Module specs",
+      "items": [
+        "specs/core",
+        "specs/bridge",
+        "specs/storage",
+        "specs/dom",
+        "specs/signals"
+      ]
+    },
+    {
+      "label": "API Reference",
+      "items": [
+        {
+          "label": "core",
+          "link": "/api/core/"
+        },
+        {
+          "label": "bridge",
+          "link": "/api/bridge/"
+        },
+        {
+          "label": "storage",
+          "link": "/api/storage/"
+        },
+        {
+          "label": "dom",
+          "link": "/api/dom/"
+        },
+        {
+          "label": "signals",
+          "link": "/api/signals/"
+        }
+      ]
+    }
+  ],
+  "excluded": []
+}
