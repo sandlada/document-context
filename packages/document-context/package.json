@@ -30,10 +30,35 @@
         "build"
     ],
     "exports": {
+        ".": {
+            "types": "./build/index.d.ts",
+            "import": "./build/index.js",
+            "default": "./build/index.js"
+        },
         "./domain": {
             "types": "./build/domain/index.d.ts",
             "import": "./build/domain/index.js",
             "default": "./build/domain/index.js"
+        },
+        "./application": {
+            "types": "./build/application/index.d.ts",
+            "import": "./build/application/index.js",
+            "default": "./build/application/index.js"
+        },
+        "./infrastructure/dom": {
+            "types": "./build/infrastructure/dom/index.d.ts",
+            "import": "./build/infrastructure/dom/index.js",
+            "default": "./build/infrastructure/dom/index.js"
+        },
+        "./infrastructure/storage": {
+            "types": "./build/infrastructure/storage/index.d.ts",
+            "import": "./build/infrastructure/storage/index.js",
+            "default": "./build/infrastructure/storage/index.js"
+        },
+        "./infrastructure/ssr": {
+            "types": "./build/infrastructure/ssr/index.d.ts",
+            "import": "./build/infrastructure/ssr/index.js",
+            "default": "./build/infrastructure/ssr/index.js"
         },
         "./package.json": "./package.json"
     },
