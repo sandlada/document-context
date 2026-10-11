@@ -7,16 +7,22 @@
  *
  * - `registry` (per-Document pending requests) is created first;
  * - `observer` (per-Document centralized `MutationObserver`) dispatches
- *   connection facts into the adapter's `notifyHost` and maps external
+ *   connection facts into the adapter's `notifyHost`, maps external
  *   `data-context-key` writes to `registry.wakeAll` (whole-registry
  *   re-evaluation; the observer carries no token index, so the
  *   subtree/token-bucket fast path cannot apply — correctness fallback per
- *   D-87);
+ *   D-87), and maps structure batches (`childList` / connection) to
+ *   `registry.wakeAll` guarded by emptiness (zero cost when no pending);
  * - `adapter` (I1a: host normalization, scheduler, scope transport,
  *   keyed-identity I/O) is composed with `sink: observer.asSink()` (every
  *   created host is tracked) and `wake: registry` (pending watches retry on
  *   `wakeSubtree` / `wakeAll`), closing the late-binding loop with no
  *   polling and no resident timers;
+ * - a document-level `context-mount` listener wakes the registry on every
+ *   `Mounted` entry (subtree fast path with token-bucket filter when
+ *   `providedTokens` is present, subtree fallback for keyed-only legacy
+ *   dispatches per 09b §9b.6, whole-registry fallback when the host cannot
+ *   be resolved);
  * - session mounts announce through `bindSessionAnnouncements` (the F-track
  *   composition root calls the returned `announce` once per mount, before
  *   hydration settles).
@@ -35,7 +41,7 @@ import type { ScopeTransportPort } from '../../domain/ports/scope-transport.js'
 import { createHostAdapter, notifyHost } from './host-adapter.js'
 import type { HostAdapter, HostTokenIO } from './host-adapter.js'
 import type { ObserverSink } from './host-adapter.js'
-import { bindSessionAnnouncements } from './attach.js'
+import { bindSessionAnnouncements, CONTEXT_MOUNT_EVENT } from './attach.js'
 import { createObserver } from './observer.js'
 import type { DomObserver } from './observer.js'
 import { createPendingRegistry } from './late-binding.js'
@@ -126,13 +132,111 @@ export function createDomAdapter(options: DomAdapterOptions = {}): DomAdapter {
         ...(options.maxBatch === undefined ? {} : { maxBatch: options.maxBatch }),
         ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     })
+    const wakeIfPending = (): void => {
+        if (registry.size() === 0) {
+            return
+        }
+        registry.wakeAll()
+    }
     const observer = createObserver({
         ...(options.document === undefined ? {} : { document: options.document }),
         dispatch: notifyHost,
         onKeyChange: () => registry.wakeAll(),
+        onStructureChange: wakeIfPending,
         ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
     })
     const adapter = createHostAdapter({ sink: observer.asSink(), wake: registry })
+    const resolveListenerDocument = (): Document | null => {
+        if (options.document !== undefined) {
+            return options.document
+        }
+        const ambient = (globalThis as { readonly document?: unknown }).document
+        if (typeof ambient === 'object' && ambient !== null) {
+            return ambient as Document
+        }
+        return null
+    }
+    const listenerDocument = resolveListenerDocument()
+    const isElementNode = (node: unknown): node is Element => {
+        if (typeof node !== 'object' || node === null) {
+            return false
+        }
+        return (node as { readonly nodeType?: unknown }).nodeType === 1
+    }
+    const onContextMount = (event: Event): void => {
+        if (registry.size() === 0) {
+            return
+        }
+        let element: Element | null = null
+        try {
+            const pathSource = event as { readonly composedPath?: unknown }
+            if (typeof pathSource.composedPath === 'function') {
+                const path = (pathSource.composedPath as () => unknown).call(event)
+                if (Array.isArray(path)) {
+                    for (const node of path) {
+                        if (isElementNode(node)) {
+                            element = node
+                            break
+                        }
+                    }
+                }
+            }
+        } catch {
+            element = null
+        }
+        if (element === null) {
+            const target = (event as { readonly target?: unknown }).target
+            if (isElementNode(target)) {
+                element = target
+            }
+        }
+        if (element === null) {
+            registry.wakeAll()
+            return
+        }
+        let host: HostPort<HTMLElement>
+        try {
+            host = adapter.toHost(element)
+        } catch {
+            registry.wakeAll()
+            return
+        }
+        let providedTokens: ReadonlyArray<string> | undefined
+        let detailToken: unknown
+        try {
+            const detail = (event as CustomEvent).detail as
+                | { readonly token?: unknown, readonly providedTokens?: unknown }
+                | null
+                | undefined
+            if (typeof detail === 'object' && detail !== null) {
+                if (Array.isArray(detail.providedTokens)) {
+                    providedTokens = (detail.providedTokens as Array<unknown>).filter(
+                        (candidate): candidate is string => typeof candidate === 'string',
+                    )
+                }
+                detailToken = detail.token
+            }
+        } catch {
+            providedTokens = undefined
+        }
+        if (providedTokens !== undefined) {
+            registry.wakeSubtree(host, providedTokens)
+            return
+        }
+        if (typeof detailToken === 'string') {
+            registry.wakeSubtree(host, [detailToken])
+            registry.wakeSubtree(host)
+            return
+        }
+        registry.wakeAll()
+    }
+    if (listenerDocument !== null) {
+        try {
+            listenerDocument.addEventListener(CONTEXT_MOUNT_EVENT, onContextMount)
+        } catch {
+            // Listener install is best-effort; observer and transport still work.
+        }
+    }
     let disposed = false
     return {
         toHost: (node: unknown): HostPort<HTMLElement> => adapter.toHost(node),
@@ -148,6 +252,13 @@ export function createDomAdapter(options: DomAdapterOptions = {}): DomAdapter {
                 return
             }
             disposed = true
+            if (listenerDocument !== null) {
+                try {
+                    listenerDocument.removeEventListener(CONTEXT_MOUNT_EVENT, onContextMount)
+                } catch {
+                    // Teardown is best-effort.
+                }
+            }
             observer.dispose()
             registry.clear()
         },

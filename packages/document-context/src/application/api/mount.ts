@@ -39,6 +39,8 @@ import { hydrateState } from '../../domain/usecases/hydrate.js'
 import type { HydrateStateResult } from '../../domain/usecases/hydrate.js'
 import { resolveSync } from '../../domain/usecases/resolve.js'
 import type { SyncServiceStore } from '../../domain/usecases/resolve.js'
+import { createPersistWiring } from '../persist-wiring.js'
+import type { PersistWiring } from '../persist-wiring.js'
 
 import type { ApplicationContext } from '../context.js'
 
@@ -257,6 +259,8 @@ interface SessionEntry<S extends Record<PropertyKey, unknown>> {
     resolveSettled: () => void
     /** Scheduler retained for TTL and re-checks. */
     scheduler: SchedulerPort
+    /** Persist write-back wiring, or null when the blueprint carries no storage. */
+    wiring: PersistWiring<S> | null
 }
 
 /** Suspended registry slot shared with the dispose verb. */
@@ -415,7 +419,12 @@ const trackAsync = (
 /**
  * Two-phase dispose shared by every mount fail path, TTL expiry, eviction,
  * and the ERM symbols. Mirrors the `createDispose` verb; keep the two in
- * sync. Idempotent through the entry disposed guard.
+ * sync. Idempotent through the entry disposed guard. The flush phase orders
+ * abort, persist write-back, then poison and teardown: the abort controller
+ * fires first so cancellation settles, the persist wiring performs one
+ * best-effort final flush (async failures float fire-and-forget), and only
+ * then does the kernel poison the store while the teardown below releases
+ * listeners and cleanups.
  *
  * @param ctx Application context.
  * @param facade Session facade to tear down.
@@ -426,6 +435,24 @@ const disposeEntry = (ctx: ApplicationContext, facade: Session): void => {
         return
     }
     entry.disposed = true
+    try {
+        if (!entry.record.abortController.signal.aborted) {
+            entry.record.abortController.abort()
+        }
+    } catch {
+        // Abort is best-effort; teardown proceeds regardless.
+    }
+    if (entry.wiring !== null) {
+        try {
+            const produced: unknown = entry.wiring.dispose()
+            if (isThenable(produced)) {
+                Promise.resolve(produced).then(undefined, () => {})
+            }
+        } catch {
+            // Persist flush is best-effort; teardown proceeds regardless.
+        }
+        entry.wiring = null
+    }
     try {
         entry.kernel.dispose()
     } catch {
@@ -551,13 +578,45 @@ const instantiateLocal = (
     if (registration.lifecycle === 'scoped' && entry.instances.has(registration.token)) {
         return entry.instances.get(registration.token)
     }
+    if (registration.lifecycle === 'singleton'
+        && typeof registration.token !== 'string'
+        && entry.instances.has(registration.token)) {
+        return entry.instances.get(registration.token)
+    }
     const produced: unknown = entry.record.services.resolveSync(registration.token, () => {
         return (registration.factory as (session: unknown) => unknown)(entry.facade)
     })
     if (registration.lifecycle === 'scoped' && !isThenable(produced)) {
         entry.instances.set(registration.token, produced)
     }
+    if (registration.lifecycle === 'singleton' && !isThenable(produced)) {
+        if (typeof registration.token === 'string') {
+            publishSingleton(ctx, entry, registration.token, produced)
+        } else {
+            entry.instances.set(registration.token, produced)
+        }
+    }
     return produced
+}
+
+/**
+ * Publishes a locally produced singleton value to the application slot.
+ * First published value wins; a claim marker reserves the slot for the
+ * warming claimant, so only the claimant may replace a marker. Unclaimed
+ * duplicates evaluate transiently without publishing (02 §2.4
+ * first-registration wins).
+ */
+const publishSingleton = (
+    ctx: ApplicationContext,
+    entry: SessionEntry<Record<PropertyKey, unknown>>,
+    key: string,
+    value: unknown,
+): void => {
+    const current = ctx.singletons.get(key)
+    if (current === undefined
+        || (entry.claimedSingletons.has(key) && current.status === 'resolved' && current.value === undefined)) {
+        ctx.singletons.set(key, { status: 'resolved', value })
+    }
 }
 
 /** Single-value scope answer walking ancestors nearest-first; misses stay silent for late binding. */
@@ -621,6 +680,71 @@ const resolveMulti = (
     return values
 }
 
+/** Reports whether a host wraps a real element (bubbling transport) versus an in-memory fake. */
+const isElementHost = (host: HostPort): boolean => {
+    try {
+        const native: unknown = host.native()
+        return typeof native === 'object' && native !== null
+            && (native as { readonly nodeType?: unknown }).nodeType === 1
+    } catch {
+        return false
+    }
+}
+
+/** Single-value local answer for bubbling transports: singleton cache plus the answering session only. */
+const resolveSingleLocal = (
+    ctx: ApplicationContext,
+    entry: SessionEntry<Record<PropertyKey, unknown>>,
+    token: Token,
+): { readonly found: boolean, readonly value?: unknown } => {
+    if (typeof token === 'string') {
+        const singleton = ctx.singletons.get(token)
+        if (singleton !== undefined && singleton.status === 'resolved' && singleton.value !== undefined) {
+            return { found: true, value: singleton.value }
+        }
+    }
+    if (entry.warming || entry.record.status !== 'mounted' || entry.disposed) {
+        return { found: false }
+    }
+    const registration = entry.singles.get(token)
+    if (registration === undefined) {
+        return { found: false }
+    }
+    try {
+        const produced = instantiateLocal(ctx, entry, registration)
+        if (isThenable(produced)) {
+            return { found: false }
+        }
+        return { found: true, value: produced }
+    } catch {
+        return { found: false }
+    }
+}
+
+/** Multi-value local answer for bubbling transports: the answering session's registrations only. */
+const resolveMultiLocal = (
+    ctx: ApplicationContext,
+    entry: SessionEntry<Record<PropertyKey, unknown>>,
+    token: Token,
+): Array<unknown> => {
+    if (entry.warming || entry.record.status !== 'mounted' || entry.disposed) {
+        return []
+    }
+    const values: Array<unknown> = []
+    const registrations = entry.multis.get(token) ?? []
+    for (const registration of registrations) {
+        try {
+            const produced = instantiateLocal(ctx, entry, registration)
+            if (!isThenable(produced)) {
+                values.push(produced)
+            }
+        } catch {
+            continue
+        }
+    }
+    return values
+}
+
 /** Installs the one-shot `context-request` responder on the current host. */
 const installResponder = (ctx: ApplicationContext, entry: SessionEntry<Record<PropertyKey, unknown>>): void => {
     const off = entry.hostBox.current.on('context-request', (event: unknown) => {
@@ -630,14 +754,22 @@ const installResponder = (ctx: ApplicationContext, entry: SessionEntry<Record<Pr
         }
         const callback = detail.callback as (value: unknown) => void
         // The subscribe flag is P1-reserved; v0.1.0 always answers one-shot per D-115.
+        // Real elements bubble across sessions, so each responder answers its
+        // own session only (bubbling collects the ancestry); in-memory fakes
+        // do not bubble, so the responder walks ancestors to simulate it.
+        const local = isElementHost(entry.hostBox.current)
         if (detail.multi === true) {
-            const values = resolveMulti(ctx, entry.hostBox.current, detail.token as Token)
+            const values = local
+                ? resolveMultiLocal(ctx, entry, detail.token as Token)
+                : resolveMulti(ctx, entry.hostBox.current, detail.token as Token)
             if (values.length > 0) {
                 callback(values)
             }
             return
         }
-        const hit = resolveSingle(ctx, entry.hostBox.current, detail.token as Token)
+        const hit = local
+            ? resolveSingleLocal(ctx, entry, detail.token as Token)
+            : resolveSingle(ctx, entry.hostBox.current, detail.token as Token)
         if (hit.found) {
             callback(hit.value)
             const holder = event as { readonly stopPropagation?: unknown }
@@ -799,11 +931,26 @@ const warmEager = async (
     entry: SessionEntry<Record<PropertyKey, unknown>>,
     ctx: ApplicationContext,
 ): Promise<void> => {
-    const eager = [...entry.blueprint.providers.values()].filter((registration) => registration.eager)
+    const eager = [...entry.blueprint.providers.values()].filter((registration) =>
+        registration.eager && !isIgnoredDuplicateSingleton(entry, registration))
     await Promise.all(eager.map((registration) =>
         entry.record.services.resolveAsync(registration.token, () => instantiateEager(ctx, entry, registration))
     ))
 }
+
+/**
+ * Duplicate singleton declarations are ignored per 02 §2.4 (first
+ * registration wins; the loser already reported SINGLETON_CONFLICT at claim
+ * time). Warming the loser's copy through the registry sandwich would trip
+ * the sync re-entry guard with a misleading CIRCULAR_DEPENDENCY, so eager
+ * warming skips it; reads resolve to the winner's instance.
+ */
+const isIgnoredDuplicateSingleton = <S extends Record<PropertyKey, unknown>>(
+    entry: SessionEntry<S>,
+    registration: ServiceRegistration,
+): boolean => registration.lifecycle === 'singleton'
+    && typeof registration.token === 'string'
+    && !entry.claimedSingletons.has(registration.token)
 
 /** Claims singleton ownership; duplicates route `SINGLETON_CONFLICT` to the loser channel. */
 const claimSingletons = (
@@ -863,6 +1010,83 @@ const runOnMount = async (
     }
 }
 
+/** Version-envelope encode for storage write-back. Local to the mount track: the infra `serialize` helper renders SSR payload strings (state-to-string plus escaping), a different shape; persistence envelopes stay `{ v, d }` here per 06 section 6.4. */
+const encodePersistEnvelope = <S>(snapshot: S, version: number): string => JSON.stringify({ v: version, d: snapshot })
+
+/** Parses one observed envelope into its snapshot, or null when corrupt (the caller reports `INVALID_STORAGE_DATA` and keeps running). */
+const decodePersistEnvelope = <S>(raw: string): S | null => {
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(raw)
+    } catch {
+        return null
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return null
+    }
+    const envelope = parsed as Record<string, unknown>
+    if (typeof envelope['v'] !== 'number' || !('d' in envelope)) {
+        return null
+    }
+    const data: unknown = envelope['d']
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        return null
+    }
+    return data as S
+}
+
+/** Resolves the blueprint storage backend once per mount; null when the blueprint persists nothing. */
+const resolveStorageForMount = <S extends Record<PropertyKey, unknown>>(
+    ctx: ApplicationContext,
+    blueprint: ContextBlueprint<S>,
+): { port: StoragePort, key: string } | null => {
+    const storageOptions = blueprint.storage
+    if (storageOptions === null) {
+        return null
+    }
+    const backend = storageOptions.storage
+    if (typeof backend === 'string') {
+        const resolved = ctx.ports.storage.resolve(backend)
+        if (resolved === null) {
+            throw new DocumentContextError('UNKNOWN_SERVICE', { token: backend })
+        }
+        return { port: resolved, key: storageOptions.key }
+    }
+    return { port: backend, key: storageOptions.key }
+}
+
+/** Maps `StorageOptions.conflict` to the persist-wiring `decide` hook: `'lww'` (and absent) stays the default replace, `'ignore-external'` drops every remote, and a function merges. Equality stays the default JSON compare. */
+const decideForConflict = <S>(
+    conflict: 'lww' | 'ignore-external' | ((local: S, remote: S) => S) | undefined,
+): ((local: S, remote: S) => S | 'ignore') | undefined => {
+    if (typeof conflict === 'function') {
+        return conflict as (local: S, remote: S) => S | 'ignore'
+    }
+    if (conflict === 'ignore-external') {
+        return () => 'ignore' as const
+    }
+    return undefined
+}
+
+/** Applies one raw external value flush-then-compare (D-100): flushes the pending local batch first, then folds the decoded remote through `onRemote`. Null (external removal) is a silent no-op; corrupt payloads report `INVALID_STORAGE_DATA` and keep the subscription running. */
+const applyPersistRemote = <S extends Record<PropertyKey, unknown>>(
+    entry: SessionEntry<S>,
+    wiring: PersistWiring<S>,
+    key: string,
+    raw: string | null,
+): void => {
+    if (raw === null) {
+        return
+    }
+    const remote = decodePersistEnvelope<S>(raw)
+    if (remote === null) {
+        entry.channel.push(new DocumentContextError('INVALID_STORAGE_DATA', { key }))
+        return
+    }
+    wiring.flush()
+    wiring.onRemote(remote)
+}
+
 /** Hydrates the seed through storage and the SSR payload; never throws for data problems. */
 const hydrateForMount = async <S extends Record<PropertyKey, unknown>>(
     ctx: ApplicationContext,
@@ -870,18 +1094,24 @@ const hydrateForMount = async <S extends Record<PropertyKey, unknown>>(
     token: string | null,
     options: MountOptions,
     seedOverride: S | undefined,
+    resolved?: { port: StoragePort, key: string } | null,
 ): Promise<HydrateStateResult<S>> => {
     const storageOptions = blueprint.storage
     let storagePort: StoragePort | null = null
     let storageKey = ''
-    if (storageOptions !== null) {
+    if (resolved !== undefined) {
+        if (resolved !== null) {
+            storagePort = resolved.port
+            storageKey = resolved.key
+        }
+    } else if (storageOptions !== null) {
         const backend = storageOptions.storage
         if (typeof backend === 'string') {
-            const resolved = ctx.ports.storage.resolve(backend)
-            if (resolved === null) {
+            const found = ctx.ports.storage.resolve(backend)
+            if (found === null) {
                 throw new DocumentContextError('UNKNOWN_SERVICE', { token: backend })
             }
-            storagePort = resolved
+            storagePort = found
         } else {
             storagePort = backend
         }
@@ -1057,9 +1287,6 @@ const resuscitateEntry = async <S extends Record<PropertyKey, unknown>>(
     const targetIsNullHost = ctx.ports.ssr !== undefined && newHost === ctx.ports.ssr.nullHost
     if (entry.token !== null) {
         ctx.keyed.set(entry.token, entry.facade)
-        if (!entry.isNullHost && !targetIsNullHost) {
-            ctx.ports.host.tokens.write(newNative, entry.token)
-        }
     }
     entry.hostSub = newHost.lifecycle$.subscribe(watchHost(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>))
     entry.forwardSub = newHost.lifecycle$.subscribe((event: HostLifecycleEvent) => {
@@ -1077,6 +1304,9 @@ const resuscitateEntry = async <S extends Record<PropertyKey, unknown>>(
         (handler as unknown as (session: unknown, host: unknown) => unknown)(entry.facade, entry.hostFacade)
     })
     installResponder(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
+    if (entry.token !== null && !entry.isNullHost && !targetIsNullHost) {
+        ctx.ports.host.tokens.write(newNative, entry.token)
+    }
     entry.lifecycle.next({ type: 'resuscitated' })
     return entry.facade as unknown as Session
 }
@@ -1175,6 +1405,7 @@ const startFreshMount = <S extends Record<PropertyKey, unknown>>(
         settled,
         resolveSettled,
         scheduler,
+        wiring: null,
     }
     const facade = buildFacade<S, unknown>(ctx, entry)
     entry.facade = facade as unknown as Session
@@ -1195,9 +1426,9 @@ const startFreshMount = <S extends Record<PropertyKey, unknown>>(
         record: record as unknown as MountSessionRecord<Record<PropertyKey, unknown>>,
     })
     ctx.records.set(facade as unknown as object, record as unknown as MountSessionRecord<Record<PropertyKey, unknown>>)
-    if (token !== null && !isNullHost) {
-        ctx.ports.host.tokens.write(native, token)
-    }
+    // Keyed identity write-back is deferred until after the responder install
+    // (see mountFresh / mountFreshSync): the observer's key-change wake must
+    // hit an answering window, never an unanswering one.
     claimSingletons(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
     entry.hostSub = host.lifecycle$.subscribe(watchHost(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>))
     entry.forwardSub = host.lifecycle$.subscribe((event: HostLifecycleEvent) => {
@@ -1226,17 +1457,80 @@ const mountFresh = async <S extends Record<PropertyKey, unknown>, Host>(
             abortSettled = reject
         })
         : null
-    const hydrated = await hydrateForMount(ctx, blueprint, token, options, seedOverride)
+    const storageInfo = resolveStorageForMount(ctx, blueprint)
+    const storageOptions = blueprint.storage
+    const crossTab = storageOptions?.crossTab ?? true
+    const pendingRemotes: Array<string | null> = []
+    const wiringBox: { wiring: PersistWiring<S> | null } = { wiring: null }
+    const entryBox: { entry: SessionEntry<S> | null } = { entry: null }
+    let observeSub: Subscription | null = null
+    if (storageInfo !== null && crossTab !== false) {
+        observeSub = storageInfo.port.observe$(storageInfo.key).subscribe((raw: string | null) => {
+            const liveWiring = wiringBox.wiring
+            const liveEntry = entryBox.entry
+            if (liveWiring === null || liveEntry === null) {
+                pendingRemotes.push(raw)
+                return
+            }
+            applyPersistRemote(liveEntry, liveWiring, storageInfo.key, raw)
+        })
+    }
+    let hydrated: HydrateStateResult<S>
+    try {
+        hydrated = await hydrateForMount(ctx, blueprint, token, options, seedOverride, storageInfo)
+    } catch (error) {
+        observeSub?.unsubscribe()
+        throw error
+    }
     const hydrateErrors = [...hydrated.errors]
     if (signal?.aborted === true) {
+        observeSub?.unsubscribe()
         throw signal.reason
     }
     if (!isNullHost && !host.isConnected && kind === 'anonymous') {
+        observeSub?.unsubscribe()
         throw new DocumentContextError('UNCONNECTED_NODE', { connected: false })
     }
     const { entry, facade } = startFreshMount(ctx, blueprint, options, host, nativeKey, native, token, kind, isNullHost, hydrated.state)
     for (const error of hydrateErrors) {
         entry.channel.push(error)
+    }
+    if (storageInfo !== null && storageOptions !== null) {
+        const storageKey = storageInfo.key
+        const storagePort = storageInfo.port
+        const version = storageOptions.version ?? 0
+        const decide = decideForConflict<S>(storageOptions.conflict as 'lww' | 'ignore-external' | ((local: S, remote: S) => S) | undefined)
+        const blocked = hydrated.writeBlocked
+        const inner = createPersistWiring<S>({
+            state$: entry.record.sessionState.state$,
+            getSnapshot: () => entry.record.sessionState.getSnapshot(),
+            setState: (next: S) => entry.record.sessionState.setState(next),
+            scheduler: entry.scheduler,
+            write: (snapshot: S) => storagePort.write(storageKey, encodePersistEnvelope(snapshot, version)),
+            isBlocked: () => blocked,
+            report: (error: DocumentContextError) => entry.channel.push(error),
+            ...(decide !== undefined ? { decide } : {}),
+        })
+        const capturedSub = observeSub
+        const wiring: PersistWiring<S> = {
+            dispose: () => {
+                try {
+                    capturedSub?.unsubscribe()
+                } catch {
+                    // Observer teardown is best-effort.
+                }
+                return inner.dispose()
+            },
+            flush: () => inner.flush(),
+            onRemote: (remote: S) => inner.onRemote(remote),
+        }
+        entry.wiring = wiring
+        wiringBox.wiring = wiring
+        entryBox.entry = entry
+        for (const raw of pendingRemotes) {
+            applyPersistRemote(entry, wiring, storageKey, raw)
+        }
+        pendingRemotes.length = 0
     }
     const onAbort = (): void => {
         entry.kernel.abort(signal?.reason)
@@ -1323,6 +1617,9 @@ const mountFresh = async <S extends Record<PropertyKey, unknown>, Host>(
         await runOnMount(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
     }
     installResponder(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
+    if (token !== null && !isNullHost) {
+        ctx.ports.host.tokens.write(native, token)
+    }
     entry.lifecycle.next({ type: 'mounted' })
     return facade as unknown as Session<S, Host>
 }
@@ -1689,9 +1986,6 @@ const resuscitateSync = (
     const targetIsNullHost = ctx.ports.ssr !== undefined && newHost === ctx.ports.ssr.nullHost
     if (entry.token !== null) {
         ctx.keyed.set(entry.token, entry.facade)
-        if (!entry.isNullHost && !targetIsNullHost) {
-            ctx.ports.host.tokens.write(newNative, entry.token)
-        }
     }
     entry.hostSub = newHost.lifecycle$.subscribe(watchHost(ctx, entry))
     entry.forwardSub = newHost.lifecycle$.subscribe((event: HostLifecycleEvent) => {
@@ -1728,6 +2022,9 @@ const resuscitateSync = (
         (handler as unknown as (session: unknown, host: unknown) => unknown)(entry.facade, entry.hostFacade)
     })
     installResponder(ctx, entry)
+    if (entry.token !== null && !entry.isNullHost && !targetIsNullHost) {
+        ctx.ports.host.tokens.write(newNative, entry.token)
+    }
     entry.lifecycle.next({ type: 'resuscitated' })
     ctx.settled$.next()
     return entry.facade
@@ -1781,6 +2078,7 @@ const mountFreshSync = <S extends Record<PropertyKey, unknown>, Host>(
         }
     }
     let hydrated: S
+    let writeBlocked = false
     const hydrateErrors: Array<DocumentContextError> = []
     if (storagePort === null && payload === null && seedOverride === undefined) {
         hydrated = { ...blueprint.initial }
@@ -1798,6 +2096,7 @@ const mountFreshSync = <S extends Record<PropertyKey, unknown>, Host>(
                 const migrate = storageOptions?.migrate as unknown as ((persisted: unknown, oldVersion: number) => Partial<S>) | undefined
                 const result = hydrateSync(seedOverride ?? blueprint.initial, read.value, payload, strategy, version, migrate, storageKey)
                 hydrated = result.state
+                writeBlocked = result.writeBlocked
                 for (const error of result.errors) {
                     hydrateErrors.push(error)
                 }
@@ -1816,9 +2115,55 @@ const mountFreshSync = <S extends Record<PropertyKey, unknown>, Host>(
     for (const error of hydrateErrors) {
         entry.channel.push(error)
     }
+    if (storagePort !== null && storageOptions !== null) {
+        const version = storageOptions.version ?? 0
+        const decide = decideForConflict<S>(storageOptions.conflict as 'lww' | 'ignore-external' | ((local: S, remote: S) => S) | undefined)
+        const blocked = writeBlocked
+        const key = storageKey
+        const port = storagePort
+        const inner = createPersistWiring<S>({
+            state$: entry.record.sessionState.state$,
+            getSnapshot: () => entry.record.sessionState.getSnapshot(),
+            setState: (next: S) => entry.record.sessionState.setState(next),
+            scheduler: entry.scheduler,
+            write: (snapshot: S) => port.write(key, encodePersistEnvelope(snapshot, version)),
+            isBlocked: () => blocked,
+            report: (error: DocumentContextError) => entry.channel.push(error),
+            ...(decide !== undefined ? { decide } : {}),
+        })
+        const wiringBox: { wiring: PersistWiring<S> | null } = { wiring: null }
+        let observeSub: Subscription | null = null
+        if ((storageOptions.crossTab ?? true) !== false) {
+            observeSub = port.observe$(key).subscribe((raw: string | null) => {
+                const liveWiring = wiringBox.wiring
+                if (liveWiring === null) {
+                    return
+                }
+                applyPersistRemote(entry, liveWiring, key, raw)
+            })
+        }
+        const capturedSub = observeSub
+        const wiring: PersistWiring<S> = {
+            dispose: () => {
+                try {
+                    capturedSub?.unsubscribe()
+                } catch {
+                    // Observer teardown is best-effort.
+                }
+                return inner.dispose()
+            },
+            flush: () => inner.flush(),
+            onRemote: (remote: S) => inner.onRemote(remote),
+        }
+        wiringBox.wiring = wiring
+        entry.wiring = wiring
+    }
     entry.warming = false
+    if (entry.record.status === 'initializing') {
+        entry.record.status = transition(entry.record.status, 'ready', entry.record.kind)
+    }
     for (const registration of blueprint.providers.values()) {
-        if (!registration.eager) {
+        if (!registration.eager || isIgnoredDuplicateSingleton(entry, registration)) {
             continue
         }
         try {
@@ -1877,6 +2222,9 @@ const mountFreshSync = <S extends Record<PropertyKey, unknown>, Host>(
         }
     }
     installResponder(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
+    if (token !== null && !isNullHost) {
+        ctx.ports.host.tokens.write(native, token)
+    }
     entry.lifecycle.next({ type: 'mounted' })
     ctx.settled$.next()
     return facade as unknown as Session<S, Host>

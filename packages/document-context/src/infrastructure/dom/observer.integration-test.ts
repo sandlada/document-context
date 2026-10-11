@@ -32,10 +32,16 @@ afterEach(() => {
     document.body.innerHTML = ''
 })
 
-const trackObserver = (dispatch: Dispatch, onKeyChange?: (host: HostPort, key: string | null) => void) => {
-    const observer = onKeyChange === undefined
-        ? createObserver({ dispatch })
-        : createObserver({ dispatch, onKeyChange })
+const trackObserver = (
+    dispatch: Dispatch,
+    onKeyChange?: (host: HostPort, key: string | null) => void,
+    onStructureChange?: () => void,
+) => {
+    const observer = createObserver({
+        dispatch,
+        ...(onKeyChange === undefined ? {} : { onKeyChange }),
+        ...(onStructureChange === undefined ? {} : { onStructureChange }),
+    })
     disposers.push(() => observer.dispose())
     return observer
 }
@@ -495,5 +501,41 @@ describe('createObserver', () => {
         await flushMutations()
         expect(quiet).not.toHaveBeenCalled()
         expect(loud).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires onStructureChange once per childList batch', async () => {
+        const structure = vi.fn()
+        const observer = trackObserver(() => {}, undefined, structure)
+        const element = document.createElement('div')
+        document.body.appendChild(element)
+        observer.asSink().track(stubHost(element))
+        const child = document.createElement('span')
+        element.appendChild(child)
+        element.appendChild(document.createElement('em'))
+        await flushMutations()
+        expect(structure).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires onStructureChange on connection batches via recheck', () => {
+        const structure = vi.fn()
+        const observer = trackObserver(() => {}, undefined, structure)
+        const element = document.createElement('div')
+        document.body.appendChild(element)
+        const host = stubHost(element)
+        observer.asSink().track(host)
+        element.remove()
+        observer.recheck(host)
+        expect(structure).toHaveBeenCalledTimes(1)
+    })
+
+    it('stays silent without an onStructureChange hook', async () => {
+        const dispatch = vi.fn()
+        const observer = trackObserver(dispatch)
+        const element = document.createElement('div')
+        document.body.appendChild(element)
+        observer.asSink().track(stubHost(element))
+        element.remove()
+        await flushMutations()
+        expect(dispatch).toHaveBeenCalledTimes(1)
     })
 })

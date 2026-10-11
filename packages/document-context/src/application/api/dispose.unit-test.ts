@@ -450,3 +450,88 @@ describe('dispose two-phase teardown', () => {
         expect(events).toEqual(['disposed'])
     })
 })
+
+describe('dispose persist flush phase', () => {
+    const entrySlot = Symbol.for('document-context.application.session-entry')
+
+    const readWiringSlot = (session: Session): { wiring?: { dispose(): unknown } } => {
+        const entry = (session as unknown as Record<symbol, { wiring?: { dispose(): unknown } }>)[entrySlot]
+        if (entry === undefined) {
+            throw new Error('expected a live session entry')
+        }
+        return entry
+    }
+
+    it('flushes persist wiring between abort and poison in order', async () => {
+        const { ctx } = createWorld()
+        const host = createFakeHost({ connected: true })
+        const session = await createMount(ctx)(blueprintOf({ count: 0 }))(host)
+        const order: Array<string> = []
+        session.abortSignal.addEventListener('abort', () => {
+            order.push('abort')
+        })
+        session.state$.subscribe({
+            complete: () => {
+                order.push('poison')
+            },
+        })
+        readWiringSlot(session).wiring = {
+            dispose: (): void => {
+                order.push('flush')
+            },
+        }
+        createDispose(ctx)(session)
+        expect(order).toEqual(['abort', 'flush', 'poison'])
+        expect(session.isDisposed).toBe(true)
+    })
+
+    it('skips the flush phase when no wiring is present', async () => {
+        const { ctx } = createWorld()
+        const session = await createMount(ctx)(blueprintOf({ count: 0 }))(createFakeHost({ connected: true }))
+        const events: Array<string> = []
+        session.lifecycle$.subscribe((event) => {
+            events.push(event.type)
+        })
+        expect(() => createDispose(ctx)(session)).not.toThrow()
+        expect(session.isDisposed).toBe(true)
+        expect(events).toEqual(['disposed'])
+    })
+
+    it('survives wiring dispose throws without interrupting teardown', async () => {
+        const { ctx } = createWorld()
+        const host = createFakeHost({ connected: true })
+        const session = await createMount(ctx)(blueprintOf({ count: 0 }))(host)
+        readWiringSlot(session).wiring = {
+            dispose: (): void => {
+                throw new Error('flush-denied')
+            },
+        }
+        const events: Array<string> = []
+        session.lifecycle$.subscribe((event) => {
+            events.push(event.type)
+        })
+        expect(() => createDispose(ctx)(session)).not.toThrow()
+        expect(session.isDisposed).toBe(true)
+        expect(events).toEqual(['disposed'])
+        expect(ctx.sessions.get(host.native() as object)).toBeUndefined()
+    })
+
+    it('fire-and-forgets async wiring dispose while dropping registries synchronously', async () => {
+        const { ctx } = createWorld()
+        const host = createFakeHost({ connected: true })
+        const session = await createMount(ctx)(blueprintOf({ count: 0 }))(host)
+        const native = host.native() as object
+        const settled: Array<string> = []
+        readWiringSlot(session).wiring = {
+            dispose: (): Promise<void> => Promise.resolve().then(() => {
+                settled.push('flush-settled')
+            }),
+        }
+        createDispose(ctx)(session)
+        expect(ctx.sessions.get(native)).toBeUndefined()
+        expect(session.isDisposed).toBe(true)
+        expect(settled).toEqual([])
+        await tick()
+        expect(settled).toEqual(['flush-settled'])
+    })
+})

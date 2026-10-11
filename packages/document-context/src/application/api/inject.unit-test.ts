@@ -1286,4 +1286,106 @@ describe('inject multi faces', () => {
         expect(collected.values).toEqual([['session-tag']])
         expect(collected.completed()).toBe(true)
     })
+
+    it('flattens transport-path multi snapshots to session-map flat shape (bottomUp)', async () => {
+        const { Observable } = await import('rxjs')
+        const scheduler = createFakeScheduler()
+        const leaf = createFakeHost({ connected: true })
+        const natives = new Map<unknown, HostPort<unknown>>()
+        natives.set(leaf.native(), leaf)
+        const nestedTransport = {
+            request: (): null => null,
+            requestAll: (): ReadonlyArray<never> => [],
+            watch: (): Observable<never> => EMPTY as unknown as Observable<never>,
+            watchAll: <T>(token: Token, from: HostPort<unknown>, options?: { readonly direction?: 'bottomUp' | 'topDown' }): Observable<ReadonlyArray<{ readonly value: unknown, readonly unsubscribe: () => void }>> => {
+                const direction = options?.direction ?? 'bottomUp'
+                const near = { value: ['near-tag'] as unknown as T, unsubscribe: (): void => {} }
+                const far = { value: ['far-tag'] as unknown as T, unsubscribe: (): void => {} }
+                const snapshot = direction === 'bottomUp' ? [near, far] : [far, near]
+                return new Observable((subscriber) => {
+                    subscriber.next(snapshot as ReadonlyArray<{ readonly value: unknown, readonly unsubscribe: () => void }>)
+                    subscriber.complete()
+                    return undefined
+                }) as unknown as Observable<ReadonlyArray<{ readonly value: unknown, readonly unsubscribe: () => void }>>
+            },
+        }
+        const sessions = new Map<unknown, { readonly facade: AnySession, readonly record: AnyRecord }>()
+        const records = new WeakMap<object, AnyRecord>()
+        const ctx2 = {
+            ports: {
+                host: {
+                    toHost: (native: unknown): HostPort<unknown> => {
+                        const found = natives.get(native)
+                        if (found === undefined) {
+                            throw new DocumentContextError('HOST_INVALID', { reason: 'unknown-native' })
+                        }
+                        return found
+                    },
+                    scheduler,
+                    scopeTransport: nestedTransport as unknown as import('../../domain/index.js').ScopeTransportPort,
+                },
+            },
+            sessions,
+            records,
+            singletons: new Map<unknown, unknown>(),
+        }
+        const nested = createInjection(ctx2)
+        await expect(nested.injectAll('app:tags')(leaf)).resolves.toEqual(['near-tag', 'far-tag'])
+        await expect(nested.injectAll('app:tags', { direction: 'topDown' })(leaf)).resolves.toEqual(['far-tag', 'near-tag'])
+    })
+
+    it('produces byte-identical flat shapes on session-map and transport paths', async () => {
+        const { ctx, mount } = setup()
+        const api = createInjection(ctx)
+        const root = await mount({ multis: [{ ...syncReg('app:flat-tag', 'far'), multi: true }] })
+        const leaf = await mount({
+            parent: root.host,
+            multis: [{ ...syncReg('app:flat-tag', 'near'), multi: true }],
+        })
+        const viaMap = await api.injectAll('app:flat-tag')(leaf.native)
+        expect(viaMap).toEqual(['near', 'far'])
+        const viaMapTop = await api.injectAll('app:flat-tag', { direction: 'topDown' })(leaf.native)
+        expect(viaMapTop).toEqual(['far', 'near'])
+    })
+
+    it('flattens nested thenables on the transport path', async () => {
+        const { Observable } = await import('rxjs')
+        const scheduler = createFakeScheduler()
+        const leaf = createFakeHost({ connected: true })
+        const natives = new Map<unknown, HostPort<unknown>>()
+        natives.set(leaf.native(), leaf)
+        const nestedTransport = {
+            request: (): null => null,
+            requestAll: (): ReadonlyArray<never> => [],
+            watch: (): Observable<never> => EMPTY as unknown as Observable<never>,
+            watchAll: (): Observable<ReadonlyArray<{ readonly value: unknown, readonly unsubscribe: () => void }>> => new Observable((subscriber) => {
+                subscriber.next([
+                    { value: [Promise.resolve('async-near'), 'sync-near'] as unknown, unsubscribe: (): void => {} },
+                    { value: ['far'] as unknown, unsubscribe: (): void => {} },
+                ] as ReadonlyArray<{ readonly value: unknown, readonly unsubscribe: () => void }>)
+                subscriber.complete()
+                return undefined
+            }),
+        }
+        const ctx2 = {
+            ports: {
+                host: {
+                    toHost: (native: unknown): HostPort<unknown> => {
+                        const found = natives.get(native)
+                        if (found === undefined) {
+                            throw new DocumentContextError('HOST_INVALID', { reason: 'unknown-native' })
+                        }
+                        return found
+                    },
+                    scheduler,
+                    scopeTransport: nestedTransport as unknown as import('../../domain/index.js').ScopeTransportPort,
+                },
+            },
+            sessions: new Map<unknown, { readonly facade: AnySession, readonly record: AnyRecord }>(),
+            records: new WeakMap<object, AnyRecord>(),
+            singletons: new Map<unknown, unknown>(),
+        }
+        const nested = createInjection(ctx2)
+        await expect(nested.injectAll('app:flat-async')(leaf)).resolves.toEqual(['async-near', 'sync-near', 'far'])
+    })
 })

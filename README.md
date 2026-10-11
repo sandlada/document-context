@@ -2,7 +2,7 @@
 
 ![npm version](https://img.shields.io/npm/v/@sandlada/document-context?label=NPM%20Version&labelColor=%23223625&color=%23a0fab0)
 ![GitHub License](https://img.shields.io/github/license/sandlada/document-context?label=License&labelColor=%23223625&color=%23a0fab0)
-[![coverage](https://img.shields.io/badge/coverage-95.8%25-a0fab0?labelColor=223625&label=coverage)](./packages/document-context/coverage/index.html)
+[![coverage](https://img.shields.io/badge/coverage-95.0%25-a0fab0?labelColor=223625&label=coverage)](./packages/document-context/coverage/index.html)
 
 A modern, function-first Inversion of Control (IoC) container and reactive state management library anchored directly to **`HTMLElement` and physical DOM nodes**.
 

@@ -135,7 +135,12 @@ const trackAsync = (entry: SessionEntryView, produced: Promise<unknown>, hook: s
 
 /**
  * Tears down one session in two phases. Mirrors the mount-side `disposeEntry`;
- * keep the two in sync. Idempotent through the entry disposed guard.
+ * keep the two in sync. Idempotent through the entry disposed guard. The
+ * flush phase orders abort, persist write-back, then poison and teardown:
+ * the abort controller fires first so cancellation settles, the duck-typed
+ * persist wiring (set by the mount verb in phase 2) performs one
+ * best-effort final flush, and only then does the kernel poison the store
+ * while the teardown below releases listeners and cleanups.
  *
  * @param ctx Application context.
  * @param entry Live entry behind the facade.
@@ -146,6 +151,24 @@ const disposeLive = (ctx: ApplicationContext, entry: SessionEntryView, facade: S
         return
     }
     entry.disposed = true
+    try {
+        if (!entry.record.abortController.signal.aborted) {
+            entry.record.abortController.abort()
+        }
+    } catch {
+        // Abort is best-effort; teardown proceeds regardless.
+    }
+    const wiring = (entry as { readonly wiring?: { dispose(): unknown } }).wiring
+    if (wiring !== undefined && wiring !== null) {
+        try {
+            const produced: unknown = wiring.dispose()
+            if (isThenable(produced)) {
+                Promise.resolve(produced).then(undefined, () => {})
+            }
+        } catch {
+            // Persist flush is best-effort; teardown proceeds regardless.
+        }
+    }
     try {
         entry.kernel.dispose()
     } catch {
@@ -218,7 +241,9 @@ const disposeLive = (ctx: ApplicationContext, entry: SessionEntryView, facade: S
 /**
  * Creates the dispose verb over an application context.
  *
- * Disposal runs the two-phase teardown: abort fires, the store poisons,
+ * Disposal runs the two-phase teardown: abort fires, the persist wiring
+ * flushes one best-effort write (when the mount verb wired one), the store
+ * poisons,
  * listeners tear down, sync cleanups run LIFO before `onDispose` hooks LIFO,
  * async cleanups settle fire-and-forget, `errors$` completes after
  * settlement, `lifecycle$` pushes `disposed`, registries drop the session,

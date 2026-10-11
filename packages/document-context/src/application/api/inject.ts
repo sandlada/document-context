@@ -1102,12 +1102,34 @@ const buildMultiStream = (
                 for (const resolution of resolutions) {
                     resolution.unsubscribe()
                 }
-                const values = resolutions.map((resolution) => resolution.value)
-                if (values.some((value) => isThenable(value))) {
+                const flat: Array<unknown> = []
+                for (const resolution of resolutions) {
+                    const value: unknown = resolution.value
+                    if (Array.isArray(value)) {
+                        for (const item of value) {
+                            flat.push(item)
+                        }
+                    } else {
+                        flat.push(value)
+                    }
+                }
+                if (flat.some((value) => isThenable(value))) {
                     valuePending = true
-                    Promise.all(values.map((value) => Promise.resolve(value))).then(win, fail)
+                    Promise.all(flat.map((value) => Promise.resolve(value))).then((resolved) => {
+                        const finalValues: Array<unknown> = []
+                        for (const value of resolved) {
+                            if (Array.isArray(value)) {
+                                for (const item of value) {
+                                    finalValues.push(item)
+                                }
+                            } else {
+                                finalValues.push(value)
+                            }
+                        }
+                        win(finalValues)
+                    }, fail)
                 } else {
-                    win(values as ReadonlyArray<unknown>)
+                    win(flat)
                 }
             },
             error: fail,

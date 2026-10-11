@@ -9,10 +9,12 @@
  * observe half reuses the same fake: self-writes stay silent while
  * `emitExternal` (the cross-tab stand-in) notifies `observe$` subscribers.
  *
- * State-to-backend write-back on `update` is intentionally not asserted: it
- * is deferred in v0.1.0 (the domain and application docs reserve
- * microtask-batched write-backs and cross-tab conflict resolution), so this
- * suite pins the shipped hydration and observation behavior only.
+ * State-to-backend write-back is asserted end to end: `update` batches into
+ * a microtask write, `dispose` performs one final best-effort flush, and a
+ * remount (or a second live session fed the written envelope through
+ * `emitExternal`) reads the new value. The fake backend models same-tab
+ * silence, so cross-tab delivery to a live session is driven explicitly with
+ * `emitExternal`, mirroring the browser `storage` / `BroadcastChannel` hop.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -66,11 +68,43 @@ describe('persist hydration', () => {
             )
             const revived = await mount(blueprint)(second)
             try {
-                expect(selectSync((state: { count: number }) => state.count)(revived)).toBe(12)
+                expect(selectSync((state: { count: number }) => state.count)(revived)).toBe(13)
             } finally {
                 dispose(revived)
             }
         } finally {
+            second.remove()
+        }
+    })
+
+    it('makes write-back visible to a second live session through external delivery', async () => {
+        const backend = createFakeStorage()
+        await backend.port.write('app:dual-counter', JSON.stringify({ v: 0, d: { count: 12 } }))
+        const first = mountElement()
+        const second = mountElement()
+        try {
+            const blueprint = pipe(
+                createContext({ count: 0 }),
+                persist({ storage: backend.port, key: 'app:dual-counter' }),
+            )
+            const sessionA = await mount(blueprint)(first)
+            const sessionB = await mount(blueprint)(second)
+            try {
+                expect(selectSync((state: { count: number }) => state.count)(sessionB)).toBe(12)
+                update({ count: 13 })(sessionA)
+                dispose(sessionA)
+                const written = backend.contents().get('app:dual-counter')
+                if (written === undefined) {
+                    throw new Error('missing write-back')
+                }
+                backend.emitExternal('app:dual-counter', written)
+                expect(selectSync((state: { count: number }) => state.count)(sessionB)).toBe(13)
+            } finally {
+                dispose(sessionA)
+                dispose(sessionB)
+            }
+        } finally {
+            first.remove()
             second.remove()
         }
     })

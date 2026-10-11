@@ -14,7 +14,7 @@ import {
     createFakeScopeTransport,
     createFakeStorage,
 } from '../../domain/testing/fakes.js'
-import type { FakeHost, FakeScheduler } from '../../domain/testing/fakes.js'
+import type { FakeHost, FakeScheduler, FakeStorageHandle } from '../../domain/testing/fakes.js'
 import { createDispose } from './dispose.js'
 import { createMount, createMountSync } from './mount.js'
 import type { ApplicationContext } from '../context.js'
@@ -1304,7 +1304,7 @@ describe('mount async resuscitation', () => {
 })
 
 describe('mount scope responder edges', () => {
-    it('answers lazy singletons through the ancestor walk (factory per request)', async () => {
+    it('answers lazy singletons through the ancestor walk with first-published-wins identity', async () => {
         const { ctx } = createWorld()
         const host = createFakeHost({ connected: true })
         let calls = 0
@@ -1314,18 +1314,18 @@ describe('mount scope responder edges', () => {
                 return { n: calls }
             }, { lifecycle: 'singleton' }),
         ]))(host)
-        // NOTE (singleton responder caching): the W3C responder path runs the
-        // factory per request for lazy singletons (scoped registrations reuse
-        // the per-session cache instead). Singleton identity across dispatches
-        // is owned by the inject layer and eager warming, not this path.
+        // Lazy singleton factories run once: the first published value is
+        // cached application-wide (02 §2.4 first-registration wins) instead
+        // of re-running per dispatch.
         const answers: Array<unknown> = []
         for (let round = 0; round < 2; round += 1) {
             host.dispatch('context-request', {
                 detail: { token: 'app:lazy-single', callback: (value: unknown) => { answers.push(value) } },
             })
         }
-        expect(calls).toBe(2)
+        expect(calls).toBe(1)
         expect(answers).toHaveLength(2)
+        expect(answers[0]).toBe(answers[1])
     })
 
     it('skips async singleton registrations one-shot without answering', async () => {
@@ -1462,24 +1462,64 @@ describe('mount scope responder edges', () => {
 })
 
 describe('mount eager and singleton warming', () => {
-    it('lets a losing singleton claimant warm through the local path and reports the conflict', async () => {
+    it('lets a losing eager-singleton claimant mount and share the winner instance', async () => {
         const { ctx } = createWorld()
+        let calls = 0
         const bp = blueprintOf({ count: 0 }, [
-            provider('app:contended', () => ({ id: 'mine' }), { lifecycle: 'singleton', eager: true }),
+            provider('app:contended', () => {
+                calls += 1
+                return { id: 'mine' }
+            }, { lifecycle: 'singleton', eager: true }),
+        ])
+        const winnerHost = createFakeHost({ connected: true })
+        const winner = await createMount(ctx)(bp)(winnerHost)
+        expect(winner.isDisposed).toBe(false)
+        expect(calls).toBe(1)
+        // Duplicate singleton declarations are ignored per 02 §2.4
+        // (first registration wins): the loser mounts successfully, reports
+        // SINGLETON_CONFLICT, and never runs the factory. Warming the loser's
+        // copy through the registry sandwich used to trip the sync re-entry
+        // guard with a misleading CIRCULAR_DEPENDENCY.
+        const loserHost = createFakeHost({ connected: true })
+        const loser = await createMount(ctx)(bp)(loserHost)
+        expect(loser.isDisposed).toBe(false)
+        expect(calls).toBe(1)
+        const codes: Array<string> = []
+        loser.errors$.subscribe((error) => {
+            codes.push(error.code)
+        })
+        expect(codes).toEqual(['SINGLETON_CONFLICT'])
+        const answers: Array<unknown> = []
+        loserHost.dispatch('context-request', {
+            detail: { token: 'app:contended', callback: (value: unknown) => { answers.push(value) } },
+        })
+        const winnerAnswers: Array<unknown> = []
+        winnerHost.dispatch('context-request', {
+            detail: { token: 'app:contended', callback: (value: unknown) => { winnerAnswers.push(value) } },
+        })
+        expect(answers).toHaveLength(1)
+        expect(answers[0]).toBe(winnerAnswers[0])
+    })
+
+    it('lets a losing eager-singleton claimant mountSync and share the winner instance', async () => {
+        const { ctx } = createWorld()
+        let calls = 0
+        const bp = blueprintOf({ count: 0 }, [
+            provider('app:sync-contended', () => {
+                calls += 1
+                return { id: 'mine' }
+            }, { lifecycle: 'singleton', eager: true }),
         ])
         const winner = await createMount(ctx)(bp)(createFakeHost({ connected: true }))
         expect(winner.isDisposed).toBe(false)
-        // NOTE (eager duplicate singletons): the loser warms through the
-        // unclaimed local path, which collides with its own warming guard and
-        // fails the mount with CIRCULAR_DEPENDENCY. The SINGLETON_CONFLICT is
-        // still reported on the loser channel before teardown.
-        const loser = await createMount(ctx)(bp)(createFakeHost({ connected: true })).then(
-            () => null,
-            (reason: unknown) => reason,
-        )
-        expect(loser).toBeInstanceOf(DocumentContextError)
-        expect((loser as DocumentContextError).code).toBe('CIRCULAR_DEPENDENCY')
-        expect(winner.isDisposed).toBe(false)
+        const loser = createMountSync(ctx)(bp)(createFakeHost({ connected: true }))
+        expect(loser.isDisposed).toBe(false)
+        expect(calls).toBe(1)
+        const codes: Array<string> = []
+        loser.errors$.subscribe((error) => {
+            codes.push(error.code)
+        })
+        expect(codes).toEqual(['SINGLETON_CONFLICT'])
     })
 
     it('releases singleton markers when an eager singleton rejects, healing the retry', async () => {
@@ -2325,5 +2365,290 @@ describe('mountSync keyed conflicts', () => {
         await tick()
         expect(settled.sort()).toEqual(['first', 'second'])
         expect(errorsCompleted).toBe(true)
+    })
+})
+
+describe('mount keyed write order hygiene', () => {
+    it('defers the identity write until after the responder install (async)', async () => {
+        const { ctx, keys } = createWorld()
+        const host = createFakeHost({ connected: true })
+        let seenDuringMount: string | null | undefined
+        let responderReadyDuringMount = false
+        const bp = blueprintOf({ count: 0 }, [
+            provider('app:order-check', () => 'ready'),
+        ], [
+            hook('mount', () => {
+                seenDuringMount = keys.get(host.native())
+                let answered: unknown
+                host.dispatch('context-request', {
+                    detail: { token: 'app:order-check', callback: (value: unknown) => { answered = value } },
+                })
+                responderReadyDuringMount = answered === 'ready'
+            }),
+        ])
+        const session = await createMount(ctx)(bp, { token: 'app:order-hygiene' })(host)
+        expect(seenDuringMount).toBeUndefined()
+        expect(responderReadyDuringMount).toBe(false)
+        expect(keys.get(host.native())).toBe('app:order-hygiene')
+        let answered: unknown
+        host.dispatch('context-request', {
+            detail: { token: 'app:order-check', callback: (value: unknown) => { answered = value } },
+        })
+        expect(answered).toBe('ready')
+        expect(session.token).toBe('app:order-hygiene')
+    })
+
+    it('defers the identity write until after the responder install (sync)', () => {
+        const { ctx, keys } = createWorld()
+        const host = createFakeHost({ connected: true })
+        let seenDuringMount: string | null | undefined
+        const bp = blueprintOf({ count: 0 }, [
+            provider('app:sync-order', () => 'sync-ready'),
+        ], [
+            hook('mount', () => {
+                seenDuringMount = keys.get(host.native())
+            }),
+        ])
+        const session = createMountSync(ctx)(bp, { token: 'app:sync-hygiene' })(host)
+        expect(seenDuringMount).toBeUndefined()
+        expect(keys.get(host.native())).toBe('app:sync-hygiene')
+        let answered: unknown
+        host.dispatch('context-request', {
+            detail: { token: 'app:sync-order', callback: (value: unknown) => { answered = value } },
+        })
+        expect(answered).toBe('sync-ready')
+        expect(session.token).toBe('app:sync-hygiene')
+    })
+
+    it('marks sync mounts mounted immediately for scope answers', () => {
+        const { ctx } = createWorld()
+        const host = createFakeHost({ connected: true })
+        const session = createMountSync(ctx)(blueprintOf({ count: 0 }, [
+            provider('app:sync-visible', () => 'visible'),
+        ]))(host)
+        let answered: unknown
+        host.dispatch('context-request', {
+            detail: { token: 'app:sync-visible', callback: (value: unknown) => { answered = value } },
+        })
+        expect(answered).toBe('visible')
+        expect(session.isSuspended).toBe(false)
+        expect(session.isDisposed).toBe(false)
+    })
+
+    it('pushes mounted on fresh async mounts and resuscitated on revival', async () => {
+        const { ctx, scheduler } = createWorld()
+        const hostA = createFakeHost({ connected: true })
+        const session = await createMount(ctx)(blueprintOf({ count: 0 }), { token: 'app:life-cycle' })(hostA)
+        const events: Array<string> = []
+        session.lifecycle$.subscribe((event) => {
+            events.push(event.type)
+        })
+        hostA.setConnected(false)
+        scheduler.flushMicrotasks()
+        expect(events).toEqual(['suspended'])
+        const hostB = createFakeHost({ connected: true })
+        const revived = await createMount(ctx)(blueprintOf({ count: 0 }), { token: 'app:life-cycle' })(hostB)
+        expect(revived).toBe(session)
+        expect(events).toEqual(['suspended', 'resuscitated'])
+    })
+
+    it('writes the resuscitated identity only after the responder answers', async () => {
+        const { ctx, keys, scheduler } = createWorld()
+        const hostA = createFakeHost({ connected: true })
+        const bp = blueprintOf({ count: 0 }, [
+            provider('app:revive-check', () => 'revived-ready'),
+        ])
+        const session = await createMount(ctx)(bp, { token: 'app:revive-order' })(hostA)
+        hostA.setConnected(false)
+        scheduler.flushMicrotasks()
+        expect(session.isSuspended).toBe(true)
+        const hostB = createFakeHost({ connected: true })
+        const revived = await createMount(ctx)(bp, { token: 'app:revive-order' })(hostB)
+        expect(revived).toBe(session)
+        expect(keys.get(hostB.native())).toBe('app:revive-order')
+        let answered: unknown
+        hostB.dispatch('context-request', {
+            detail: { token: 'app:revive-check', callback: (value: unknown) => { answered = value } },
+        })
+        expect(answered).toBe('revived-ready')
+    })
+})
+
+describe('mount persist write-back', () => {
+    const readEnvelope = (storage: FakeStorageHandle, key: string): { v: number, d: Record<string, unknown> } | undefined => {
+        const raw = storage.contents().get(key)
+        if (raw === undefined) {
+            return undefined
+        }
+        return JSON.parse(raw) as { v: number, d: Record<string, unknown> }
+    }
+
+    const updateCount = (ctx: ApplicationContext, session: Session, count: number): void => {
+        const record = ctx.records.get(session as unknown as object)
+        if (record === undefined) {
+            throw new Error('missing record')
+        }
+        record.sessionState.update({ count })
+    }
+
+    it('writes back coalesced updates with the version envelope', async () => {
+        const { ctx, scheduler, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-coalesce', version: 2 }),
+        )(createFakeHost({ connected: true }))
+        updateCount(ctx, session, 1)
+        updateCount(ctx, session, 2)
+        expect(scheduler.pendingMicrotasks()).toBe(1)
+        scheduler.flushMicrotasks()
+        expect(readEnvelope(storage, 'app:wb-coalesce')).toEqual({ v: 2, d: { count: 2 } })
+    })
+
+    it('flushes pending writes on dispose', async () => {
+        const { ctx, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-dispose' }),
+        )(createFakeHost({ connected: true }))
+        updateCount(ctx, session, 6)
+        createDispose(ctx)(session)
+        expect(readEnvelope(storage, 'app:wb-dispose')).toEqual({ v: 0, d: { count: 6 } })
+        expect(session.isDisposed).toBe(true)
+    })
+
+    it('lets remounts read back the flushed value', async () => {
+        const { ctx, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const bp = blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-remount' })
+        const first = await createMount(ctx)(bp)(createFakeHost({ connected: true }))
+        updateCount(ctx, first, 5)
+        createDispose(ctx)(first)
+        const second = await createMount(ctx)(bp)(createFakeHost({ connected: true }))
+        expect(snapshotOf(second)).toEqual({ count: 5 })
+    })
+
+    it('never writes when hydrate is newer-blocked and reports the guard once', async () => {
+        const { ctx, scheduler, storages } = createWorld()
+        const storage = createFakeStorage()
+        storage.port.write('app:wb-blocked', JSON.stringify({ v: 3, d: { count: 100 } }))
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 8 }, [], [], { storage: 'memory', key: 'app:wb-blocked', version: 1 }),
+        )(createFakeHost({ connected: true }))
+        expect(snapshotOf(session)).toEqual({ count: 8 })
+        const codes: Array<string> = []
+        const details: Array<unknown> = []
+        session.errors$.subscribe((error) => {
+            codes.push(error.code)
+            details.push(error.details)
+        })
+        expect(codes).toEqual(['INVALID_STORAGE_DATA'])
+        updateCount(ctx, session, 9)
+        scheduler.flushMicrotasks()
+        expect(storage.contents().get('app:wb-blocked')).toBe(JSON.stringify({ v: 3, d: { count: 100 } }))
+        expect(codes).toEqual(['INVALID_STORAGE_DATA', 'INVALID_STORAGE_DATA'])
+        expect(details[1]).toEqual({ op: 'write', guarded: true })
+        updateCount(ctx, session, 10)
+        scheduler.flushMicrotasks()
+        expect(codes).toHaveLength(2)
+        expect(storage.contents().get('app:wb-blocked')).toBe(JSON.stringify({ v: 3, d: { count: 100 } }))
+    })
+
+    it('applies external snapshots flush-then-compare without echo', async () => {
+        const { ctx, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-remote' }),
+        )(createFakeHost({ connected: true }))
+        updateCount(ctx, session, 1)
+        storage.emitExternal('app:wb-remote', envelope({ count: 9 }))
+        // D-100 flush-then-compare plus the persist-wiring no-echo apply: the
+        // pending local batch lands in the backend first, then the remote wins
+        // the state without scheduling a write-back echo.
+        expect(snapshotOf(session)).toEqual({ count: 9 })
+        expect(readEnvelope(storage, 'app:wb-remote')).toEqual({ v: 0, d: { count: 1 } })
+    })
+
+    it('drops external snapshots under ignore-external', async () => {
+        const { ctx, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-ignore', conflict: 'ignore-external' }),
+        )(createFakeHost({ connected: true }))
+        storage.emitExternal('app:wb-ignore', envelope({ count: 9 }))
+        expect(snapshotOf(session)).toEqual({ count: 0 })
+    })
+
+    it('reports corrupt external payloads and keeps running', async () => {
+        const { ctx, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-corrupt' }),
+        )(createFakeHost({ connected: true }))
+        const codes: Array<string> = []
+        session.errors$.subscribe((error) => {
+            codes.push(error.code)
+        })
+        storage.emitExternal('app:wb-corrupt', 'not-json{{{')
+        expect(snapshotOf(session)).toEqual({ count: 0 })
+        expect(codes).toEqual(['INVALID_STORAGE_DATA'])
+        storage.emitExternal('app:wb-corrupt', envelope({ count: 3 }))
+        expect(snapshotOf(session)).toEqual({ count: 3 })
+        expect(codes).toEqual(['INVALID_STORAGE_DATA'])
+    })
+
+    it('skips observe wiring when crossTab is false but still writes back', async () => {
+        const { ctx, scheduler, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = await createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-notab', crossTab: false }),
+        )(createFakeHost({ connected: true }))
+        storage.emitExternal('app:wb-notab', envelope({ count: 9 }))
+        expect(snapshotOf(session)).toEqual({ count: 0 })
+        updateCount(ctx, session, 2)
+        scheduler.flushMicrotasks()
+        expect(readEnvelope(storage, 'app:wb-notab')).toEqual({ v: 0, d: { count: 2 } })
+    })
+
+    it('buffers mid-hydration externals and delivers them post-hydration', async () => {
+        const { ctx } = createWorld()
+        const backing = createFakeStorage()
+        const subject = new Subject<string | null>()
+        let resolveRead!: (result: { readonly ok: true, readonly value: string | null }) => void
+        const gate = new Promise<{ readonly ok: true, readonly value: string | null }>((resolve) => {
+            resolveRead = resolve
+        })
+        const asyncPort: StoragePort = {
+            read: () => gate,
+            write: (key, value) => backing.port.write(key, value),
+            remove: (key) => backing.port.remove(key),
+            observe$: () => subject.asObservable(),
+        }
+        const pending = createMount(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: asyncPort, key: 'app:wb-mid' }),
+        )(createFakeHost({ connected: true }))
+        subject.next(envelope({ count: 7 }))
+        resolveRead({ ok: true, value: null })
+        const session = await pending
+        expect(snapshotOf(session)).toEqual({ count: 7 })
+    })
+
+    it('wires write-back for sync mounts', () => {
+        const { ctx, scheduler, storages } = createWorld()
+        const storage = createFakeStorage()
+        storages.set('memory', storage.port)
+        const session = createMountSync(ctx)(
+            blueprintOf({ count: 0 }, [], [], { storage: 'memory', key: 'app:wb-sync' }),
+        )(createFakeHost({ connected: true }))
+        updateCount(ctx, session, 4)
+        scheduler.flushMicrotasks()
+        expect(readEnvelope(storage, 'app:wb-sync')).toEqual({ v: 0, d: { count: 4 } })
     })
 })

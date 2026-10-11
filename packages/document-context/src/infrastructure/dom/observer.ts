@@ -69,6 +69,20 @@ export interface KeyChangeHandler {
 }
 
 /**
+ * Structure-change consumer, wired by the composer to the pending registry
+ * wake. Fired once per coalesced childList batch and once per connection
+ * batch that dispatches facts, covering consumer reparent and connect flows
+ * (09b §9b.4 second row). Absent means structure is observed but not
+ * forwarded.
+ */
+export interface StructureChangeHandler {
+    /**
+     * Signals that document structure may have changed ancestry.
+     */
+    (): void
+}
+
+/**
  * Options accepted by {@link createObserver}. Only `dispatch` is required;
  * the observed document defaults to the ambient `globalThis.document`.
  */
@@ -81,6 +95,9 @@ export interface DomObserverOptions {
     /** External key-change consumer (the registry wake entry); absent means
      * external key writes are observed but not forwarded. */
     readonly onKeyChange?: KeyChangeHandler
+    /** Structure-change consumer (the registry wake entry); absent means
+     * childList and connection batches are observed but not forwarded. */
+    readonly onStructureChange?: StructureChangeHandler
     /** Scheduler carrying the microtask re-check; defaults to a
      * `queueMicrotask` shim. Only `microtask` is consumed (D-91: observer
      * re-checks travel through the scheduler port). */
@@ -145,6 +162,7 @@ interface TrackedEntry {
 interface HandleState {
     readonly dispatch: HostDispatch
     readonly onKeyChange: KeyChangeHandler | undefined
+    readonly onStructureChange: StructureChangeHandler | undefined
     readonly scheduler: Pick<SchedulerPort, 'microtask'>
     readonly tracked: Set<TrackedEntry>
     active: boolean
@@ -232,15 +250,17 @@ const pruneHandle = (handle: HandleState): void => {
     }
 }
 
-const compareEntry = (handle: HandleState, entry: TrackedEntry, host: HostPort): void => {
+const compareEntry = (handle: HandleState, entry: TrackedEntry, host: HostPort): boolean => {
     const element = readNative(host)
     if (element === null) {
-        return
+        return false
     }
+    let changed = false
     const owner = readOwnerDocument(element)
     if (entry.doc !== null && owner !== null && owner !== entry.doc) {
         entry.doc = owner
         handle.dispatch(host, { type: 'adopt', owner })
+        changed = true
     } else if (entry.doc === null && owner !== null) {
         entry.doc = owner
     }
@@ -248,7 +268,9 @@ const compareEntry = (handle: HandleState, entry: TrackedEntry, host: HostPort):
     if (connected !== entry.connected) {
         entry.connected = connected
         handle.dispatch(host, { type: connected ? 'connect' : 'disconnect' })
+        changed = true
     }
+    return changed
 }
 
 const runCheck = (handle: HandleState): void => {
@@ -257,12 +279,22 @@ const runCheck = (handle: HandleState): void => {
         return
     }
     pruneHandle(handle)
+    let changed = false
     for (const entry of [...handle.tracked]) {
         const host = entry.ref.deref()
         if (host === undefined) {
             continue
         }
-        compareEntry(handle, entry, host)
+        if (compareEntry(handle, entry, host)) {
+            changed = true
+        }
+    }
+    if (changed) {
+        try {
+            handle.onStructureChange?.()
+        } catch {
+            // Structure wakes are best-effort and never break dispatch.
+        }
     }
 }
 
@@ -306,6 +338,11 @@ const deliver = (shared: SharedState, records: Array<MutationRecord>): void => {
         }
         if (structure) {
             handle.requestCheck()
+            try {
+                handle.onStructureChange?.()
+            } catch {
+                // Structure wakes are best-effort and never break dispatch.
+            }
         }
     }
 }
@@ -347,7 +384,7 @@ const updateObserving = (shared: SharedState): void => {
  * disconnects the native observer and releases the document entry.
  *
  * @param options Dispatch consumer plus optional document, key-change hook,
- * and scheduler override.
+ * structure-change hook, and scheduler override.
  * @returns The observer handle.
  * @throws Plain `Error` when no document is available and none is passed.
  * @example
@@ -380,6 +417,7 @@ export function createObserver(options: DomObserverOptions): DomObserver {
     const handle: HandleState = {
         dispatch: options.dispatch,
         onKeyChange: options.onKeyChange,
+        onStructureChange: options.onStructureChange,
         scheduler,
         tracked: new Set<TrackedEntry>(),
         active: true,
@@ -479,6 +517,7 @@ export function createObserver(options: DomObserverOptions): DomObserver {
                 return
             }
             pruneHandle(handle)
+            let changed = false
             for (const entry of [...handle.tracked]) {
                 const candidate = entry.ref.deref()
                 if (candidate === undefined) {
@@ -487,7 +526,16 @@ export function createObserver(options: DomObserverOptions): DomObserver {
                 if (host !== undefined && candidate !== host) {
                     continue
                 }
-                compareEntry(handle, entry, candidate)
+                if (compareEntry(handle, entry, candidate)) {
+                    changed = true
+                }
+            }
+            if (changed) {
+                try {
+                    handle.onStructureChange?.()
+                } catch {
+                    // Structure wakes are best-effort and never break dispatch.
+                }
             }
         },
         size(): number {
