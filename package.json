@@ -1,5 +1,6 @@
 {
-    "name": "@sandlada/document-context",
+    "name": "document-context-workspace",
+    "private": true,
     "version": "0.0.1-20261008.a",
     "description": "A function-first, DOM-anchored IoC container and reactive state management library for modern browsers, Astro, Web Components, and micro-frontends.",
     "author": "Kai Orion",
@@ -32,6 +33,9 @@
         "curried"
     ],
     "type": "module",
+    "workspaces": [
+        "packages/*"
+    ],
     "main": "./build/index.js",
     "types": "./build/index.d.ts",
     "sideEffects": false,
@@ -67,9 +71,12 @@
     },
     "scripts": {
         "build": "tsdown",
+        "build:domain": "npm run build --workspace=@sandlada/document-context",
         "test": "vitest run",
+        "test:domain": "npm run test --workspace=@sandlada/document-context",
         "test:watch": "vitest",
         "typecheck": "tsc --noEmit",
+        "typecheck:domain": "npm run typecheck --workspace=@sandlada/document-context",
         "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
         "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
     },

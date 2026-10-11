@@ -1,0 +1,6 @@
+export { type HydrateOutcome, hydrateState, type HydrateStateInput, type HydrateStateResult, type HydrationStrategy } from './hydrate.js'
+export { mountSession, type MountSessionInput, type MountSessionPorts, type MountSessionRecord, type MountSessionResult } from './mount.js'
+export { resolveAllSync, resolveSync, type ResolveSyncInput, resolveViaTransport, type SyncServiceStore } from './resolve.js'
+export { watchOnce, type WatchOnceInput } from './resolve-async.js'
+export { evictOldest, resuscitateSession, type SuspendableRecord, type SuspendedHandle, type SuspendOptions, suspendSession } from './suspend-resuscitate.js'
+export { applyUpdate, type StateUpdater, updateSession } from './update.js'
