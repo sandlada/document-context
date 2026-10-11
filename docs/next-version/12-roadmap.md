@@ -17,6 +17,7 @@
 - **SSR**：載入安全；`ssr` adapter（null host + 假排程器）；水合來源（儲存 / payload / 藍圖種子）；**PayloadResolver 與 `ssrPayload` 選項**；`serialize`（含 JSON 逃逸）。
 - **公開 API 補充**：`getSessionSync` / `session$`；`provide` 的 `multi` / `eager` 選項。
 - **API 梯隊與同步投影模型**：一等（異步流 / 命令）與二等（`*Sync` 後缀）分級（見 [03-application-api.md](./03-application-api.md) §3.1.1）；同步動詞限縮為熱快照投影實作、可整面移除而不影響核心；parity 測試與移除演練入閘門。
+- **Sync 支援地平線**：`0.1.x` 全程 `@deprecated`（實作落地即標記）；`0.2.0` 全面移除 Sync（含 `provideSync`），附 codemod（見 D-71 增補 D-112、D-114）。
 - **錯誤處理**：10 碼錯誤分類學（含 `RESOLUTION_TIMEOUT`）與「致命 / 非致命」對照表（單一事實來源）；`errors$` 沙箱化。
 - **TC39 ERM**：`[Symbol.dispose]` / `[Symbol.asyncDispose]`（漸進增強，feature-detect）。
 
@@ -25,7 +26,9 @@
 - **TC39 Signals 橋接**（原 `toSignal`）。
 - **TC39 Stage 3 Decorators**（原 `@provide` / `@inject` / `provideClass`）。
 - （可選）框架整合 adapter 擴充。
-- **`injectRef` handle**（`status$` / `value$` / `get()` / `resolve()`）與 **`reconnect` 動態重解析**（Provider 離場後回到 pending）。
+- **`injectRef` handle**（`status$` / `value$` / `get()` / `resolve()`）與 **`reconnect` 動態重解析**（Provider 離場後回到 pending；settle 後掛載的新 multi provider 不回填已結案消費者，見 09b §9b.2）。
+- 非同步依賴環可觀測性（waiter-graph + same-chain 偵測 + dev-ledger，掛 D-number，見 D-94）。
+- Suspended 留存調參（`retention` 命名 + `maxSuspendedPerDocument` / 批上限 K / token 桶常數，D1 調參）。
 - **`suspend` / `resuscitate` / `adopt` 原生生命週期事件**（目前由集中觀察者內部處理）。
 - 儲存寫入 debounce 選項；`@sandlada/document-context/testing`（契約套件與 fakes 公開）。
 - `site/` 文件站重做。
@@ -70,11 +73,13 @@ npx size-limit        # 體積預算（見 14-packaging-release.md §14.5）
 
 ## 12.5 完成定義（Definition of Done）
 
-1. 三層依賴規則無違逆（以 lint/測試守護）。
+1. 三層依賴規則無違逆（以 lint/測試守護，見 10 §10.5）。
 2. 所有埠皆有契約測試套件。
 3. domain 於 node 環境可載入與執行。
 4. 公共 API 全部柯里化 data-last。
 5. 品質閘門全綠（§12.3 全部）。
-6. `docs/next-version/` 完成並與實作一致；[13-decisions.md](./13-decisions.md) 在 P0 範圍內無未決項。
+6. `docs/next-version/` 完成並與實作一致；[13-decisions.md](./13-decisions.md) 在 P0 範圍內無未決項；每個 03 §3.1 row 有簽名 + 梯隊 + 範例 + 錯誤碼。
 7. 晚綁定順序無關性（inject×mount 全排列、detached→連線、re-parent、keyed 復甦喚醒）與取消語意（signal / 多通道冪等 / 目標死亡 / mount 清理）測試全綠。
-8. 同步動詞僅為投影：parity（同步 / 流一致性）測試與移除演練（stub 同步動詞後核心全綠）通過。
+8. 同步動詞僅為投影：parity（同步 / 流一致性）測試與移除演練（stub 同步動詞後核心全綠）通過。演練證明核心不依賴同步面；下游 SSR 渲染與同步工廠替代需 D-71 門控另行確立（見 D-112）。
+
+領域時間禁令入門：domain 不得引入時間算子與裸調度全局變量（lint + node 行為測試雙守衛，見 10 §10.5）。

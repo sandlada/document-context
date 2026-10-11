@@ -9,7 +9,7 @@
 | **可序列化（Serializable）** | token 能直接落 `data-context-key` 屬性與 SSR JSON，無需編碼。 |
 | **SSR 安全（SSR-safe）** | 無 module 全域可變狀態；registry 隨 Application 實例，per-request 隔離。 |
 | **散落可用（Scatter-usable）** | 不同 bundle / script / realm / 文件獨立定義的 token，只要同名即等價。 |
-| **統一命名空間** | service token 與 keyed session 身分共用同一命名空間。 |
+| **統一命名空間** | service token 與 keyed session 身分共用同一命名空間：共用同一驗證與威脅模型規則（命名空間 / 字元集 / 黑名單同時保護服務解析與 session 身分）；查詢空間獨立（單例服務註冊與 keyed session 註冊為兩個 map，見 §2b.9）。 |
 | **安全（Safe）** | 強制命名空間、字元規範、黑名單、作用域與私有 token 分層防護。 |
 
 ## 2b.2 型別
@@ -28,11 +28,13 @@ export interface PrivateToken<T> {
     readonly name: string   // 僅除錯用，不構成身分
 }
 
-// 統一 union（埠與簽名接受；keyed/序列化路徑只接受 ServiceToken）
+// 統一 union（埠與簽名接受；keyed/序列化路徑只接受 ServiceToken 字串語意，見 §2b.9）
 export type Token = ServiceToken<any> | PrivateToken<any> | string
 ```
 
 - 公開 token 的等價 = **字串相等**；私有 token 的等價 = **引用相等**。
+- `Token` 為完整 union（三者皆可傳入埠與簽名）；keyed session 身分僅接受可序列化公開 token（`ServiceToken<string>` 語意，裸字串經同一驗證器驗證，見 §2b.9）。
+- 驗證僅適用字串形式（`ServiceToken` / 裸字串）：違規一律 `TOKEN_INVALID`；`PrivateToken` 物件豁免驗證（`name` 僅除錯用，不構成身分）。
 - `ServiceRegistry` 宣告合併與 `ServiceToken<T>` **並存**（見 2b.8）。
 
 ## 2b.3 定義 API
@@ -71,6 +73,7 @@ const secret = definePrivateToken('app:session-secret')  // PrivateToken（不�
 | **重複定義** | **不視為錯誤**（`defineToken` 冪等）。 |
 
 因字元集受限，落屬性與 JSON 時 **無需額外轉義**。
+驗證僅適用字串形式；`PrivateToken` 物件豁免（見 §2b.2）。裸字串逃逸口同樣驗證（逃逸 = 型別逃逸回傳 `unknown`，不是驗證逃逸）。
 
 > `defineToken` 與 `mount` 的 keyed 身分正規化 **共用同一驗證器**（單一事實來源）；兩處違規一律 `TOKEN_INVALID`。
 
@@ -109,7 +112,7 @@ flowchart LR
 
 ```ts
 type SyncTarget = Session                                   // 同步投影（二等；僅 Session；見 03 §3.1.1）
-type LateTarget = Session | HostPort | Element              // 晚綁定流 / Promise
+type LateTarget<S = unknown, Native = HTMLElement> = Session<S, Native> | HostPort<Native> | Native  // 晚綁定流 / Promise（與 03 §3.3.1 逐字同句；接受集三者皆可，以 `toHost` 正規化）
 
 // 同步多載（injectSync / injectAllSync；一等屬性見下）
 // 1. ServiceRegistry 宣告合併（字串字面量，ergonomics）
@@ -124,7 +127,7 @@ injectSync(token: string): (session: SyncTarget) => unknown
 
 - `injectSync` / `injectAllSync` 僅接受 `Session`；元素目標經 `inject$` / `inject`（Promise）採晚綁定（缺席 = pending，見 [09b-late-binding.md](./09b-late-binding.md)）。
 - `provide` / `provideSync` / `inject$` / `inject` / `injectAll` / `injectAll$` / `injectAllSync` 採相同多載策略（晚綁定 API 的 target 為 `LateTarget`）。
-- 對僅有 `multi` 註冊的 token，單值 `inject` / `inject$` / `injectSync` 不成立（同步拋 `UNKNOWN_SERVICE`；串流 / Promise 以錯誤收場）；改以 `injectAll` / `injectAll$` / `injectAllSync` 取用。
+- 對僅有 `multi` 註冊的 token，單值同步 `injectSync` 不成立（同步拋 `UNKNOWN_SERVICE`）；單值非同步 `inject` / `inject$` 一律 pend（缺席 = pending，不即時判 multi 誤用；僅經命中 / `timeoutMs` → `RESOLUTION_TIMEOUT` / `signal` / 目標死亡結算）；改以 `injectAll` / `injectAll$` / `injectAllSync` 取用。
 
 ```ts
 // ServiceRegistry 宣告合併（跨 bundle 型別安全）
@@ -140,11 +143,13 @@ declare module '@sandlada/document-context' {
 - `mount(bp, { token })` 或宿主 `data-context-key` 賦予 Session 權威身分；**keyed 身分強制為可序列化公開 token**。
 - **來源優先序**：`options.token` > `data-context-key`；兩者並存且字串不等 → `KEYED_SESSION_CONFLICT`。
 - **驗證**：與 `defineToken` 共用規則（違規 `TOKEN_INVALID`）。
-- **幂等**：同宿主同 token 重複 `mount` 回傳快取 Session；**藍圖以首次掛載為準**。
-- **身分衝突**（依 `onConflict`，預設 `throw`）：同宿主不同 token、或同 token 於兩個活躍宿主 → `throw` 拋 `KEYED_SESSION_CONFLICT`；`evict` 處置舊 Session 後掛載新者；`reset` 以舊狀態為新 Session 的 seed（供 HMR）。詳見 [05-lifecycle-host.md](./05-lifecycle-host.md) §5.5。
+- **幂等**：同宿主同 token 重複 `mount` 回傳快取 Session；**藍圖以首次掛載為準**（除非其 host 已 observed-disconnect 待 re-check，該 keyed session 視同 Suspended-in-waiting，走復甦）。
+- **註冊拓撲**：單例服務註冊（`Map<tokenString, instance>`）與 keyed session 註冊（`Map<tokenString, WeakRef<Session>>`）為兩個 map、共享鍵空間；同字串可同時指涉兩者（各空間獨立）；不得假設跨空間可見（keyed session 不提供服務，單例不復甦）。
+- 命名空間同時保護「服務解析」與「session 身分」兩個空間（驗證與威脅模型共用同一規則；查詢空間獨立，見 §2b.1）。
+- **身分衝突**（`onConflict` 僅同宿主 swap 與 `options.token` vs `data-context-key` 矛盾，預設 `throw`）：同宿主不同 token → `throw` 拋 `KEYED_SESSION_CONFLICT`；`evict` 處置舊 Session 後掛載新者；`reset` 以舊狀態為新 Session 的 seed（供 HMR）。跨宿主 genuine dual-active（雙 connected host 同 token）一律拋 `KEYED_SESSION_CONFLICT`，無視 `onConflict`。詳見 [05-lifecycle-host.md](./05-lifecycle-host.md) §5.5。
 - **復甦**：同 token 於不同宿主且原 Session 仍在 `Suspended` TTL 內 → 復甦（沿用原藍圖，state 勝出，不重跑水合）。
 - registry 鍵 = token 字串；存活於 per-Document registry（見 2b.7）；`adoptNode` 時隨 Session 遷移。
-- 命名空間同時保護「服務解析」與「session 身分」兩個空間。
+- 儲存關鍵字（`'localStorage'` / `'sessionStorage'`）屬獨立命名空間，由 `StorageKeywords` 宣告合併擴展（見 [06-storage.md](./06-storage.md) §6.2）；不佔用 token 命名空間。
 
 ## 2b.10 威脅模型與對策
 

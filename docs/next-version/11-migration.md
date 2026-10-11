@@ -44,6 +44,8 @@ v0.1.0 是 **greenfield 全刪重寫**，最大力度支持破壞性變更。本
 
 新增：`select$`、`inject$` / `injectAll$`（晚綁定流；缺席 = pending）、`session$`（熱流）、`attach`、`defineToken`、`definePrivateToken`、`getSessionSync`、`provide` 的 `multi` / `eager` 選項。
 
+> 裸 `Infinity`（`suspensionTtlMs: Infinity`）遷移：v0.1.0 起須配 `retention: 'pinned'` 並具名 owner，否則拋配置錯（見 05 §5.5）。
+
 **命名公約**（見 [13-decisions.md](./13-decisions.md) §13.13）：異步一等**無 `Async` 後缀**（`injectAsync` → `inject`、`mountAsync` → `mount`、`provideAsync` → `provide`）；同步二等**必帶 `Sync` 後缀**（`injectSync` / `injectAllSync` / `provideSync` / `selectSync` / `getSessionSync` / `mountSync`）——不列入穩定契約，隨時可能移除，新程式碼請使用異步對應。取消為一等公民：全 async 解析 API 與 `mount` 皆接受 `signal`（可選 `timeoutMs`）。
 
 > 舊資產（`DESIGN.md`、`docs/core-concepts.md` 等）於 v0.1.0 發佈時移入 `docs/archive/`；詳見 [14-packaging-release.md](./14-packaging-release.md) §14.8。
@@ -100,8 +102,8 @@ v0.1.0 是 **greenfield 全刪重寫**，最大力度支持破壞性變更。本
 
 1. 更新 import 至根入口或 `/application`。
 2. 全域替換命名（見 11.2，含命名公約：`Async` 去後缀、同步加 `Sync`）。
-3. 元素上的 `inject(token)(element)` 改寫為 `inject$`（串流）或 `inject`（Promise）；`mount` 後已持有 Session 的場景維持 `injectSync`（同步投影・二等）。
-4. `mount(...)` 改為 `await mount(...)`（非同步默認）；需要立即 Session 時用 `mountSync`。
+3. 元素上的 `inject(token)(element)` 改寫為 `inject$`（串流）或 `inject`（Promise，見修好的 flagship 與 03 §3.3.1）；`mount` 後已持有 Session 的場景可過渡用 `injectSync`（同步投影・二等・`@deprecated`・interim，新程式碼請用 `inject(session)` / `inject$(target)`，`0.2.0` 移除見 12 §12.1）。
+4. `mount(...)` 改為 `await mount(...)`（非同步默認，見 03 §3.3）；需要立即 Session 時可過渡用 `mountSync`（同步投影・二等・`@deprecated`・interim，`0.2.0` 移除見 12 §12.1）。
 5. `withBridge` 直接刪除；以官方配方（08 §8.2）改用 `subscribe$` / `select$` + DOM API。
 6. `readErrorStream(s)` → `s.errors$`。
 7. `withStorage` → `persist`，檢視 hydration/version/migrate 選項。

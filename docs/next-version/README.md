@@ -30,12 +30,13 @@
 
 > 以 **物理 DOM 為宿主**、**嚴格六邊形分層**、**函式優先 / 柯里化 data-last**、**RxJS 第一公民**、**SSR 安全** 的 IoC/DI 與響應式狀態庫。
 >
-> 設計身份：**異步流為主**——同步動詞為二等投影，可於任何 minor 移除（見 [03 §3.1.1](./03-application-api.md) 與 [13 §13.12](./13-decisions.md)）。
+> 設計身份：**異步流為主**——同步動詞為二等投影（見 [03 §3.1.1](./03-application-api.md) 與 [13 §13.12](./13-decisions.md)）。`0.1.x` 全程 `@deprecated`（實作落地即標記），`0.2.0` 全面移除（見 D-114）；版本範圍：`0.1.x` deprecation window，`0.2.0` 移除，`1.0` 後新增二等移除視同 BREAKING 須 major；支援地平線見 [12 §12.1](./12-roadmap.md)。
 >
 > 命名公約：異步一等**無 `Async` 後缀**（`inject` / `mount` / `provide`；`$` = Observable）；同步二等**必帶 `Sync` 後缀**（`injectSync` / `injectAllSync` / `provideSync` / `mountSync` / `selectSync` / `getSessionSync`）。
 
 ## 文件用語約定
 
 - 敘述使用繁體中文，技術名詞保留英文原文。
-- 程式碼範例遵循專案規範：**不含尾隨分號**、**4 空格縮排**、**單引號**。
-- `host`（小寫）指 `HostPort` 抽象宿主；`element` 指具體 DOM 節點。
+- 程式碼範例遵循專案規範：**不含尾隨分號**、**4 空格縮排**、**單引號**（`*.json*` / mermaid fence 豁免：JSON 保持雙引號可解析，mermaid 依其語法）。
+- `host`（小寫）指 `HostPort` 抽象宿主；`element` 指具體 DOM 節點。本句為規範：公開簽名與正文一律 `host` / `element`；`Native` 僅保留於 `HostPort<Native>` 定義處；`node` 僅限 adapter 內部變數名（見 [15-glossary.md](./15-glossary.md) Host 行）。
+- 情態 legend（全 corpus 規範，術語定義見 [15-glossary.md](./15-glossary.md) 頭指針）：**必須** / **不得** = normative（MUST / MUST NOT，以 test 或 lint 強制）；**應該** / **建議** = recommended（SHOULD，偏離需理由）；**可** / **允許** = permitted（MAY，無 conformance 主張）；其餘（禁止/一律/請/…)一律視為 informative，除非改寫成 legend 詞。

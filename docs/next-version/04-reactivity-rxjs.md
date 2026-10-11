@@ -7,7 +7,7 @@ RxJS 在本專案是 **強制依賴與第一公民**，而非選用互操作層�
 | 串流 | 型別 | 語意 |
 | :--- | :--- | :--- |
 | `state$` | `Observable<S>` | 熱、背靠當前值；訂閱即得當前快照，之後持續推送 |
-| `errors$` | `Observable<DocumentContextError>` | 非致命錯誤匯流；**初始化期緩衝**（≤ 32 筆，首次訂閱排空），之後為純熱流；於銷毀結算後 `complete()` |
+| `errors$` | `Observable<DocumentContextError>` | 非致命錯誤匯流；**初始化期緩衝**（≤ 32 筆，滿時丟最舊保最新並計數，首次訂閱排空並附記賬，之後為純熱流；第二及後續訂閱者僅收訂閱後新事件；已 `complete()` 後訂閱即時 `complete()` 並附 drop-count），於銷毀結算後 `complete()` |
 | `lifecycle$` | `Observable<LifecycleEvent>` | mounted / suspended / resuscitated / adopted / disposed |
 | `abort$` | `Observable<void>` | Session 銷毀時**即時**發射一次；所有內部訂閱以此收斂 |
 
@@ -73,13 +73,14 @@ session.state$.pipe(
 
 ## 4.5 排程與批次（透過 SchedulerPort）
 
-domain 不直接使用 `queueMicrotask` / `setTimeout` / `requestAnimationFrame`，而經 `SchedulerPort`：
+domain 不直接使用 `queueMicrotask` / `setTimeout` / `requestAnimationFrame`，而經 `SchedulerPort`；以下時間算子與調度器列入黑名單，domain 與 application 內部不得引用：`delay` / `debounceTime` / `throttleTime` / `auditTime` / `timeout` / `observeOn(asyncScheduler)` 等（以 `SchedulerPort` 覆蓋的時序語意為準，黑名單隨 RxJS 出口維護）：
 
 - 儲存寫入以微任務批次（batch）合併（見 [06-storage.md](./06-storage.md) §6.5）。
 - Suspend TTL 計時器使用 `scheduler.timeout`。
-- `frame` 保留給使用者側高頻渲染自組（本庫不代管 DOM 寫入）。
+- `timeoutMs`、late-binding 重試批處理、observer 重檢一律走 `SchedulerPort`（observer 重檢走 `scheduler.microtask()`；DOM adapter 預設實現即 `queueMicrotask`）。
+- `frame` 保留給使用者側高頻渲染自組（本庫不代管 DOM 寫入）；無 `requestAnimationFrame` 時 MUST 退化為 microtask。
 
-SSR / 測試可注入假排程器使行為確定化。
+SSR / 測試可注入假排程器使行為確定化（假排程器配方見 [10-testing.md](./10-testing.md) §10.4；`09-infrastructure.md` §9.5 的 DOM 排程配方為 DOM-only，SSR / 測試改用此處指針）。
 
 ## 4.6 錯誤策略
 
@@ -91,14 +92,16 @@ session.errors$.subscribe((error) => {
 ```
 
 - 致命 / 非致命的完整對照以 [02-domain-model.md](./02-domain-model.md) §2.7 為 **單一事實來源**（不在此複列）。
-- 鉤子/清理閉包在獨立沙箱執行；拋錯封裝後送 `errors$`，**不中斷** 其餘清理與銷毀。
+- 鉤子/清理閉包在獨立沙箱執行；拋錯封裝後送 `errors$`，**不中斷** 其餘清理與銷毀（`onMount` 失敗除外：即 mount 失敗，見 [05-lifecycle-host.md](./05-lifecycle-host.md) §5.2）。
+- dispose 結算後從未被訂閱的殘餘錯誤（至多末條拒絕或 32 筆緩衝殘餘）保留至首訂；首訂收殘餘後 `complete()`；直到 GC / 卸載仍無人訂閱則調 `reportError(err)`（fire-and-forget 拒絕永不靜默）。
 
 ## 4.7 不變式
 
 1. `state$` 恆為熱串流，新訂閱立即取得當前值。
 2. 所有內部訂閱以 `abort$` 收斂；Session 銷毀後不再有活動訂閱。
 3. 所有串流在 Session 銷毀時 `complete()`；唯一例外：`errors$` 於清理結算後 `complete()`（見 §4.1）。
-4. `abort$` 於銷毀時即時發射；非同步清理的拒絕仍經 `errors$` 回報。
-5. domain 不引用任何瀏覽器排程 API（經 `SchedulerPort`）。
-6. `inject$` / `injectAll$` 為冷串流且 resolve-once：缺席 = pending，首次解析後 `complete()`；取消（unsubscribe / `signal`）即解除 pending。
-7. `session$` 為熱流、背靠當前值；只認已連線的 Mounted Session；`signal` 取消即 `complete()`。
+4. `abort$` 於銷毀時即時發射；非同步清理的拒絕仍經 `errors$` 回報（無人訂閱則 `reportError`，見 §4.6）。
+5. domain 不引用任何瀏覽器排程 API（經 `SchedulerPort`）；時間算子與調度器黑名單見 §4.5（`delay` / `debounceTime` / `timeout` / `observeOn(asyncScheduler)` 等）；全部時間語義（`timeoutMs`、TTL、存儲批窗口、late-binding 重試批處理、observer 重檢）經 `SchedulerPort`。
+6. `Session<S, Host>` 在 `S` 上協變（covariant）：`Session<Sub>` 可賦值予 `Session<Super>`；實作以 `tsc` 實測斷言為準，偏離即非 conformant。`LateTarget` / `SyncTarget` 出現處一律參數化拼寫（`Session<S> | HostPort<Native> | Native`）。
+7. `inject$` / `injectAll$` 為冷串流且 resolve-once：缺席 = pending，首次解析後 `complete()`；取消（unsubscribe / `signal`）即解除 pending。
+8. `session$` 為熱流、背靠當前值；只認已連線的 Mounted Session；`signal` 取消即 `complete()`。

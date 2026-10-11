@@ -27,10 +27,11 @@ domain  ←  application  ←  infrastructure
 
 - `domain` **不得** import `application` 或 `infrastructure`；**不得** 觸碰 `window` / `document` / `localStorage` / `MutationObserver` / `queueMicrotask` / `setTimeout`。
 - `application` **不得** import `infrastructure`（否則形成反向依賴，破壞可替換性）。
-- `infrastructure` 只依賴 `domain`（埠契約）與 `application`（型別/組合工具，如需要）。
+- `infrastructure` 在 runtime 只依賴 `domain`（埠契約）；對 `application` 僅允許 `import type` 型別引用，並以 `eslint no-restricted-imports` + node 載入測試守衛（見 [09-infrastructure.md](./09-infrastructure.md) §9.1.1）。
 - 唯一允許同時接觸兩側的是最外側的 **組合根（composition root）**。
 
-> 註：RxJS 是純計算工具，不被視為「infrastructure」。domain 可直接使用 RxJS。
+> 註：RxJS 是純計算工具，不被視為「infrastructure」。domain 僅可用非時間 RxJS 核心；時間算子與調度器黑名單（`delay` / `debounceTime` / `throttleTime` / `timeout` / `auditTime` / `sampleTime` / `observeOn(asyncScheduler)` / `asyncScheduler` / `asapScheduler` / `animationFrameScheduler`）一律禁用；全部時間語義（`timeoutMs`、TTL、儲存批次、晚綁定重試批處理）必須經 `SchedulerPort`（見 [04-reactivity-rxjs.md](./04-reactivity-rxjs.md) §4.7）。
+> 註：情態詞遵循 README conventions legend：`必須` / `不得`為規範（MUST / MUST NOT，以測試或 lint 強制）；`應該` / `建議`為推薦（SHOULD）；`可` / `允許`為許可（MAY）；其餘措辭為 informative。
 > 註：運行時契約以**異步流**為核心（`watch` / 晚綁定管線是解析的規範路徑）；同步動詞為熱快照投影（二等，見 [03-application-api.md](./03-application-api.md) §3.1.1）——移除同步面不得影響分層依賴與核心行為。
 
 ## 1.3 埠與轉接器的對偶
@@ -42,7 +43,7 @@ domain  ←  application  ←  infrastructure
 | `SchedulerPort` | 微任務 / 計時 / 動畫幀 | `infrastructure/dom/scheduler-adapter.ts` |
 | `ScopeTransportPort` | 沿祖先解析依賴的傳輸（同步 `request` + 晚綁定 `watch`／pending registry） | `infrastructure/dom/scope-transport.ts`、`late-binding.ts` |
 
-domain 只認這些埠；DOM、W3C 事件、MutationObserver、localStorage 的細節全部被封裝在 adapters 內。
+domain 只認這些埠；DOM、W3C 事件、MutationObserver、localStorage 的細節全部被封裝在 adapters 內。埠契約以 `domain/ports` 為唯一家園；`application` 僅作 `import type` 重出口，不擁有契約。
 
 ## 1.4 組合根（Composition Root）
 
@@ -55,7 +56,7 @@ import { createDomAdapter } from './infrastructure/dom/index'
 import { createStorageAdapters } from './infrastructure/storage/index'
 import { createSsrAdapter } from './infrastructure/ssr/index'
 
-// 以預設 adapters 裝配出開箱即用的 API（完整清單見 09 §9.1）
+// 以預設 adapters 裝配出開箱即用的 API（完整清單見 09 §9.1；`serialize(opts?)(session)` 為一等 curried verb，見 03 §3.1）
 export const { createContext, pipe, provide, provideSync, mount, mountSync, /* ... */ } =
     createApplication({
         host: createDomAdapter(),

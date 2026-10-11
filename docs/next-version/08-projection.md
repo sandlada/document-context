@@ -18,16 +18,18 @@
 ## 8.2 官方配方
 
 > 全部只使用本庫的流與生命週期契約；`subscribe$` 內建 `takeUntil(session.abort$)` 收斂，無需手動清理。
+> 以下每個配方各自自包含（可獨立複製運行；`blueprint` 為使用者自備的藍圖）。
 
 ### 配方 1：狀態 → DOM（粗粒度）
 
 ```ts
-import { mount, subscribe$ } from '@sandlada/document-context'
+import { mount, subscribe$, type ContextBlueprint } from '@sandlada/document-context'
 
+declare const blueprint: ContextBlueprint<{ count: number }>
 const card = document.getElementById('card')!
 const session = await mount(blueprint)(card)
 
-subscribe$((s) => {
+subscribe$((s: { count: number }) => {
     card.setAttribute('data-count', String(s.count))
     card.textContent = `計數：${s.count}`
 })(session)
@@ -36,9 +38,13 @@ subscribe$((s) => {
 ### 配方 2：狀態 → DOM（細粒度，僅在值變化時寫入）
 
 ```ts
+import { select$, type Session } from '@sandlada/document-context'
 import { distinctUntilChanged, map, takeUntil } from 'rxjs'
 
-select$((s) => s.count)(session).pipe(
+declare const session: Session<{ count: number }>
+const badge = document.getElementById('badge')!
+
+select$((s: { count: number }) => s.count)(session).pipe(
     map(String),
     distinctUntilChanged(),
     takeUntil(session.abort$)
@@ -52,6 +58,8 @@ select$((s) => s.count)(session).pipe(
 ### 配方 3：DOM → 狀態（表單輸入）
 
 ```ts
+import { onMount, update } from '@sandlada/document-context'
+
 onMount((session) => {
     const input = session.host.native() as HTMLInputElement
     const onInput = () => update({ name: input.value })(session)
@@ -66,6 +74,11 @@ onMount((session) => {
 ### 配方 4：復甦後重綁（keyed session）
 
 ```ts
+import { onResuscitate } from '@sandlada/document-context'
+
+// rebind：使用者自建的綁定重建函式（重新抓取元素引用、重掛監聽器）
+declare function rebind(session: unknown, root: unknown): void
+
 onResuscitate((session, host) => {
     // host 已指向新節點；重新讀取原生引用並重建你的 DOM 綁定
     rebind(session, host.native())
@@ -73,6 +86,8 @@ onResuscitate((session, host) => {
 ```
 
 - 本庫不代管 DOM 綁定；Suspended → Resuscitated 後，使用者的自建綁定需自行重綁（`native()` 引用規則見 [02-domain-model.md](./02-domain-model.md) §2.3）。
+- Skipped-mount 說明：若該 keyed session 曾以 Initializing 源進入 Suspended（`onMount` 尚未跑過），首 resuscitate 會先按 FIFO 跑遞延 `onMount`（註冊 cleanups），再跑 `onResuscitate`；事件仍為 `resuscitated`（`details.setup:'deferred-mount'`）——重綁邏輯照常寫在 `onResuscitate` 即可。
+- Suspended 期間 `session.host.native()` 取 deref-or-throw 語義（命中返舊 detached 節點並標註，失配拋指定碼）：Suspended 期勿 capture `native()` 引用（含 lazy / transient 工廠內），重綁時一律重取。
 
 ## 8.3 常見問答
 
@@ -85,3 +100,4 @@ onResuscitate((session, host) => {
 1. 本庫不提供任何 DOM 寫入或投影 API。
 2. 狀態流與生命週期收斂由串流契約保證（`takeUntil(abort$)` / `subscribe$`）。
 3. DOM 表現的產生、更新與 IME / 焦點 / 安全細節，全部由使用者負責。
+4. Suspended 期 `subscribe$` 回調照常推送（狀態照常演進）；背壓與可見性歸呼叫者——需要暫停推送請自行以 `takeUntil` / 旗標門控。

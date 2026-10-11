@@ -28,14 +28,14 @@
 
 - 瀏覽器：**Baseline 2023**（Chrome/Edge 111+、Safari 16.4+、Firefox 112+）。
 - 硬需求：`WeakRef`、`FinalizationRegistry`、`AbortController`（基線內建）。
-- **ERM 漸進增強**：runtime feature-detect `Symbol.dispose`；缺席時不掛載資源管理符號，改用顯式 `dispose()`（文件明示）。
+- **ERM 漸進增強**：runtime feature-detect `Symbol.dispose`；缺席時不掛載資源管理符號，改用顯式 `dispose(session)`（文件明示；`await using` 需 `ESNext.Disposable` lib，見 §14.4）。
 - 可選能力：`BroadcastChannel`、Web Locks（缺席時跨標籤退回僅 `storage` 事件）。
 - Node（僅建置 / 測試 / SSR 執行）：≥ 22.12。
 
 ## 14.4 TypeScript
 
 - 型別層最低 **TS ≥ 5.2**；repo 以最新版驗證（`npm run typecheck`）。
-- 建議 `lib`: `ES2022` + `DOM`；使用 `using` 者加 `ESNext.Disposable`。
+- 建議 `lib`: `ES2022` + `DOM`；使用 `using` 者加 `ESNext.Disposable`（ERM 缺席的運行時改用顯式 `dispose(session)`）。
 
 ## 14.5 體積預算
 
@@ -61,7 +61,8 @@ npx size-limit         # §14.5 預算
 - 手動 semver + `CHANGELOG.md`（Keep a Changelog 格式）。
 - 步驟：更新版本與 changelog → `npm run build` → git tag `vX.Y.Z` → `npm publish --access public --provenance`。
 - 0.x 期：minor 可包含 BREAKING CHANGE（於 changelog 標明）；patch 僅修補。
-- 二等（同步投影）API（見 [03-application-api.md](./03-application-api.md) §3.1.1）：不列入穩定契約；移除或改語意僅需 CHANGELOG 標註（0.x 期以 minor 承載）。
+- 版本範圍：0.x 二等移除走 any-minor-with-gate；1.0 後二等移除視同 BREAKING，須 major。現行政策（D-114）：`0.1.x` 全程 `@deprecated`，`0.2.0` 全面移除。
+- 二等（同步投影）API（見 [03-application-api.md](./03-application-api.md) §3.1.1）：不列入穩定契約；`0.1.x` 實作落地即標記 `@deprecated`，`0.2.0` 全面移除；實際移除前需先確立 SSR / 渲染與同步工廠替代路徑（見 [13-decisions.md](./13-decisions.md) D-71 增補 D-112、D-114）；CHANGELOG 標註必要不充分。
 - 發佈前檢查：`docs/next-version/` 與實作一致（12 §12.5）。
 
 ## 14.8 舊資產處置
