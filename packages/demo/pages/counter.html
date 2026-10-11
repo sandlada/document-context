@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>counter — document-context demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+        button { margin-right: 0.5rem; }
+        pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+        #log { padding-left: 1.25rem; }
+    </style>
+</head>
+<body>
+    <p><a href="../index.html">← hub</a></p>
+    <h1>counter</h1>
+    <p>State recipe: <code>createContext</code> → <code>pipe</code> →
+    <code>mountSync</code>, then <code>update</code> to push and
+    <code>subscribe$</code> / <code>select$</code> to render.</p>
+
+    <div id="counter-box">
+        <p>count: <strong id="count">…</strong> (double: <span id="double">…</span>)</p>
+        <button id="inc" type="button">+1</button>
+        <button id="dec" type="button">−1</button>
+        <button id="reset" type="button">reset</button>
+        <button id="dispose" type="button">dispose</button>
+    </div>
+    <h2>log</h2>
+    <ul id="log"></ul>
+
+    <details>
+        <summary>Published CDN equivalent (reference only, not executed here)</summary>
+        <pre>&lt;script type="importmap"&gt;
+{
+    "imports": {
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0"
+    }
+}
+&lt;/script&gt;</pre>
+    </details>
+
+    <script type="module">
+        import { createContext, dispose, mountSync, onMount, pipe, select$, subscribe$, update } from '@sandlada/document-context'
+
+        const log = (message) => {
+            const item = document.createElement('li')
+            item.textContent = message
+            document.getElementById('log').append(item)
+        }
+
+        // Phase 1: pure lazy blueprint (zero DOM, zero I/O).
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => {
+                log('mounted')
+            }),
+        )
+
+        // Phase 2: mount execution boundary. mountSync is sync-safe here:
+        // no async providers and no storage are declared.
+        const session = mountSync(blueprint)(document.getElementById('counter-box'))
+
+        // DOM recipe: render every snapshot into the page.
+        subscribe$((state) => {
+            document.getElementById('count').textContent = String(state.count)
+            log(`state: ${JSON.stringify(state)}`)
+        })(session)
+
+        // Derived projection stream for the doubled readout.
+        select$((state) => state.count * 2)(session).subscribe((doubled) => {
+            document.getElementById('double').textContent = String(doubled)
+        })
+
+        document.getElementById('inc').addEventListener('click', () => {
+            update((state) => ({ count: state.count + 1 }))(session)
+        })
+        document.getElementById('dec').addEventListener('click', () => {
+            update((state) => ({ count: state.count - 1 }))(session)
+        })
+        document.getElementById('reset').addEventListener('click', () => {
+            update({ count: 0 })(session)
+        })
+        document.getElementById('dispose').addEventListener('click', () => {
+            dispose(session)
+            log('disposed (later updates silently no-op)')
+        })
+    </script>
+</body>
+</html>

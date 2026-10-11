@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>persist — document-context demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+        input { width: 100%; box-sizing: border-box; padding: 0.4rem; }
+        button { margin: 0.5rem 0.5rem 0 0; }
+        pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <p><a href="../index.html">← hub</a></p>
+    <h1>persist</h1>
+    <p>State persists to <code>localStorage</code> under
+    <code>demo:persist:v1</code>. Type below, reload the page, and the draft is
+    hydrated back (default <code>storageFirst</code> precedence).</p>
+
+    <div id="persist-box">
+        <label>draft: <input id="draft" type="text" autocomplete="off" /></label>
+        <div>
+            <button id="clear-state" type="button">clear draft</button>
+            <button id="clear-storage" type="button">wipe storage key + reload</button>
+        </div>
+        <h2>serialize() snapshot</h2>
+        <pre id="snapshot">…</pre>
+    </div>
+
+    <details>
+        <summary>Published CDN equivalent (reference only, not executed here)</summary>
+        <pre>&lt;script type="importmap"&gt;
+{
+    "imports": {
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0"
+    }
+}
+&lt;/script&gt;</pre>
+    </details>
+
+    <script type="module">
+        import { createContext, mount, persist, pipe, serialize, subscribe$, update } from '@sandlada/document-context'
+
+        const STORAGE_KEY = 'demo:persist:v1'
+
+        const blueprint = pipe(
+            createContext({ draft: '' }),
+            persist({ storage: 'localStorage', key: STORAGE_KEY }),
+        )
+
+        // Async mount: storage hydration completes before this resolves.
+        const session = await mount(blueprint)(document.getElementById('persist-box'))
+
+        const input = document.getElementById('draft')
+        const snapshot = document.getElementById('snapshot')
+
+        subscribe$((state) => {
+            if (input.value !== state.draft) {
+                input.value = state.draft
+            }
+            snapshot.textContent = serialize()(session)
+        })(session)
+
+        input.addEventListener('input', () => {
+            update({ draft: input.value })(session)
+        })
+        document.getElementById('clear-state').addEventListener('click', () => {
+            update({ draft: '' })(session)
+        })
+        document.getElementById('clear-storage').addEventListener('click', () => {
+            window.localStorage.removeItem(STORAGE_KEY)
+            window.location.reload()
+        })
+    </script>
+</body>
+</html>

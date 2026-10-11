@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>di — document-context demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+        section { border: 1px solid #ccc; padding: 0.5rem 1rem; margin: 1rem 0; }
+        pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <p><a href="../index.html">← hub</a></p>
+    <h1>di</h1>
+    <p>Nested providers: the outer scope provides <code>demo:logger</code>, the
+    middle box inherits it from its ancestor, and the inner box overrides it.
+    Nearest registration wins.</p>
+
+    <div id="app-scope">
+        <section id="inherited-box">
+            <h2>inherited</h2>
+            <p>resolved logger: <code id="inherited-out">…</code></p>
+        </section>
+        <section id="override-box">
+            <h2>override</h2>
+            <p>resolved logger: <code id="override-out">…</code></p>
+        </section>
+    </div>
+
+    <details>
+        <summary>Published CDN equivalent (reference only, not executed here)</summary>
+        <pre>&lt;script type="importmap"&gt;
+{
+    "imports": {
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0",
+        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0/domain"
+    }
+}
+&lt;/script&gt;</pre>
+    </details>
+
+    <script type="module">
+        import { createContext, inject, mount, pipe, provide } from '@sandlada/document-context'
+        import { defineToken } from '@sandlada/document-context/domain'
+
+        const loggerToken = defineToken('demo:logger')
+
+        const appBlueprint = pipe(
+            createContext({ scope: 'app' }),
+            provide(loggerToken, async () => ({ prefix: '[app]' })),
+        )
+        const plainBlueprint = pipe(createContext({ scope: 'plain' }))
+        const overrideBlueprint = pipe(
+            createContext({ scope: 'override' }),
+            provide(loggerToken, async () => ({ prefix: '[section]' })),
+        )
+
+        await mount(appBlueprint)(document.getElementById('app-scope'))
+        await mount(plainBlueprint)(document.getElementById('inherited-box'))
+        await mount(overrideBlueprint)(document.getElementById('override-box'))
+
+        // Inject from a descendant element: resolution walks up the DOM scope chain.
+        const inherited = await inject(loggerToken)(document.getElementById('inherited-box'))
+        document.getElementById('inherited-out').textContent = inherited.prefix
+
+        // The override scope shadows the ancestor registration for its subtree.
+        const overridden = await inject(loggerToken)(document.getElementById('override-box'))
+        document.getElementById('override-out').textContent = overridden.prefix
+    </script>
+</body>
+</html>

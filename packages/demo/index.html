@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>document-context demo hub</title>
+    <style>
+        body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+        li { margin: 0.5rem 0; }
+        pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>@sandlada/document-context demo</h1>
+    <p>Vanilla multi-page Vite demo. Each page imports the library with a bare
+    specifier (<code>@sandlada/document-context</code>,
+    <code>@sandlada/document-context/domain</code>) so Vite resolves the
+    workspace link for dev, build, preview, and StackBlitz.</p>
+    <ul>
+        <li><a href="./pages/counter.html">counter</a> — state, <code>update</code>, <code>subscribe$</code>, <code>select$</code>, DOM render recipe</li>
+        <li><a href="./pages/di.html">di</a> — nested providers, ancestor <code>inject</code>, nearest-wins override</li>
+        <li><a href="./pages/late-binding.html">late-binding</a> — <code>inject</code> before <code>mount</code></li>
+        <li><a href="./pages/persist.html">persist</a> — <code>localStorage</code> persistence plus <code>serialize</code> display</li>
+    </ul>
+
+    <details>
+        <summary>Published CDN equivalent (reference only, not executed here)</summary>
+        <p>When the package is installed from a registry instead of the
+        workspace, the same pages work with a real import map like this:</p>
+        <pre>&lt;script type="importmap"&gt;
+{
+    "imports": {
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0",
+        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0/domain"
+    }
+}
+&lt;/script&gt;</pre>
+        <p>This demo intentionally does <em>not</em> ship a live import map:
+        a static map cannot point at workspace build output in a way that
+        works for Vite dev, Vite build/preview, and StackBlitz at the same
+        time, so the runnable scripts below use bare specifiers and let Vite
+        resolve them.</p>
+    </details>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>late-binding — document-context demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+        pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <p><a href="../index.html">← hub</a></p>
+    <h1>late-binding</h1>
+    <p>The consumer asks for <code>demo:greeter</code> <em>before</em> anything
+    is mounted. The <code>inject</code> promise stays pending until the mount
+    button wires the provider, then it resolves.</p>
+
+    <div id="late-parent">
+        <p>status: <strong id="status">waiting for provider…</strong></p>
+        <p>greeter says: <code id="greeting">…</code></p>
+        <button id="mount-now" type="button">mount provider now</button>
+        <span id="late-child"></span>
+    </div>
+
+    <details>
+        <summary>Published CDN equivalent (reference only, not executed here)</summary>
+        <pre>&lt;script type="importmap"&gt;
+{
+    "imports": {
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0",
+        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0/domain"
+    }
+}
+&lt;/script&gt;</pre>
+    </details>
+
+    <script type="module">
+        import { createContext, inject, mount, pipe, provide } from '@sandlada/document-context'
+        import { defineToken } from '@sandlada/document-context/domain'
+
+        const greeterToken = defineToken('demo:greeter')
+
+        const blueprint = pipe(
+            createContext({ scope: 'late' }),
+            provide(greeterToken, async () => ({ greet: (name) => `hello, ${name}!` })),
+        )
+
+        // Requested BEFORE mount: this promise waits for the provider to appear.
+        const pending = inject(greeterToken)(document.getElementById('late-child'))
+        pending.then((greeter) => {
+            document.getElementById('status').textContent = 'resolved after mount'
+            document.getElementById('greeting').textContent = greeter.greet('world')
+        })
+
+        document.getElementById('mount-now').addEventListener('click', async () => {
+            await mount(blueprint)(document.getElementById('late-parent'))
+        })
+    </script>
+</body>
+</html>
