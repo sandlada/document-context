@@ -54,7 +54,7 @@ export interface FakeScopeWorld {
  * @returns A controllable world exposing the transport under test.
  * @example
  * ```ts
- * import { createFakeScopeTransport } from './scope-transport.test.js'
+ * import { createFakeScopeTransport } from './scope-transport.unit-test.js'
  *
  * const world = createFakeScopeTransport()
  * const leaf = world.createHost()
@@ -263,7 +263,7 @@ function collect<T>(observable: Observable<T>): {
  * @example
  * ```ts
  * import { describe } from 'vitest'
- * import { createFakeScopeTransport, scopeTransportPortContract } from './scope-transport.test.js'
+ * import { createFakeScopeTransport, scopeTransportPortContract } from './scope-transport.unit-test.js'
  *
  * describe('fake scope transport', () => {
  *     scopeTransportPortContract(createFakeScopeTransport)

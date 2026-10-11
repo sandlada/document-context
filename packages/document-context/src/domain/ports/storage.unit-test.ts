@@ -39,7 +39,7 @@ export interface FakeStorageHandle {
  * @returns A controllable fake storage handle.
  * @example
  * ```ts
- * import { createFakeStorage } from './storage.test.js'
+ * import { createFakeStorage } from './storage.unit-test.js'
  *
  * const handle = createFakeStorage()
  * ```
@@ -131,7 +131,7 @@ export function createFakeStorage(): FakeStorageHandle {
  * @example
  * ```ts
  * import { describe } from 'vitest'
- * import { createFakeStorage, storagePortContract } from './storage.test.js'
+ * import { createFakeStorage, storagePortContract } from './storage.unit-test.js'
  *
  * describe('fake storage', () => {
  *     storagePortContract(createFakeStorage)

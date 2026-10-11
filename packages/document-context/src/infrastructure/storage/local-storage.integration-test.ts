@@ -4,11 +4,11 @@
  * `./index.js`.
  *
  * `BroadcastChannel` is stubbed with a recording no-op so the suite stays
- * deterministic; the live channel behavior is proven in `sync.test.ts`.
+ * deterministic; the live channel behavior is proven in `sync.integration-test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { storagePortContract } from '../../domain/ports/storage.test.js'
-import type { FakeStorageHandle } from '../../domain/ports/storage.test.js'
+import { storagePortContract } from '../../domain/ports/storage.unit-test.js'
+import type { FakeStorageHandle } from '../../domain/ports/storage.unit-test.js'
 import type { StorageError } from '../../domain/ports/storage.js'
 import { createStorageAdapters } from './index.js'
 import { createLocalStorageAdapter } from './local-storage.js'

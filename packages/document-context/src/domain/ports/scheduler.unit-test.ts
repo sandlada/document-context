@@ -30,7 +30,7 @@ export interface FakeScheduler extends SchedulerPort {
  * @returns A controllable fake scheduler implementing `SchedulerPort`.
  * @example
  * ```ts
- * import { createFakeScheduler } from './scheduler.test.js'
+ * import { createFakeScheduler } from './scheduler.unit-test.js'
  *
  * const scheduler = createFakeScheduler()
  * scheduler.microtask(() => {})
@@ -99,7 +99,7 @@ export function createFakeScheduler(): FakeScheduler {
  * @example
  * ```ts
  * import { describe } from 'vitest'
- * import { createFakeScheduler, schedulerPortContract } from './scheduler.test.js'
+ * import { createFakeScheduler, schedulerPortContract } from './scheduler.unit-test.js'
  *
  * describe('fake scheduler', () => {
  *     schedulerPortContract(createFakeScheduler)

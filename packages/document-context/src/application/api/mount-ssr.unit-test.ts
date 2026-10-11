@@ -2,7 +2,7 @@
  * SSR nullHost regression tests: server-side mounts over the connectionless
  * null host (07 §7.2 / §7.7, D-49, D-92).
  *
- * Runs in the `application` project (plain node): no DOM globals, no
+ * Runs in the `unit` project (plain node): no DOM globals, no
  * `infra/dom` imports. The real infrastructure null host is imported
  * directly (TEST-ONLY cross-layer import) so the production guards
  * (`keyOf` fallback, token-write skips, disposal guards) are proven against

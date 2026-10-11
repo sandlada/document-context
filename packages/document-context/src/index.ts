@@ -38,6 +38,9 @@ import { serialize as ssrSerialize } from './infrastructure/ssr/serialize.js'
 export { createApplication }
 export type { Application, HostAdapter, MountOptions, SsrAdapter }
 export type { LateTarget } from './application/index.js'
+/** Defines a namespaced public token (pure, idempotent). */
+export { defineToken, definePrivateToken } from './domain/index.js'
+export type { ServiceToken, PrivateToken, Token, ServiceRegistry } from './domain/index.js'
 
 /**
  * Lazily constructed DOM adapter backing the shared application. Creation

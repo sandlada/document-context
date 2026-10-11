@@ -6,23 +6,23 @@ export default defineConfig({
         projects: [
             {
                 test: {
-                    name: 'domain',
+                    name: 'unit',
                     environment: 'node',
-                    include: ['src/domain/**/*.test.ts']
+                    include: ['src/**/*.unit-test.ts']
                 }
             },
             {
                 test: {
-                    name: 'application',
-                    environment: 'node',
-                    include: ['src/application/**/*.test.ts']
-                }
-            },
-            {
-                test: {
-                    name: 'infrastructure',
+                    name: 'integration',
                     environment: 'happy-dom',
-                    include: ['src/infrastructure/**/*.test.ts', 'src/index.test.ts']
+                    include: ['src/**/*.integration-test.ts']
+                }
+            },
+            {
+                test: {
+                    name: 'e2e',
+                    environment: 'happy-dom',
+                    include: ['src/**/*.e2e-test.ts']
                 }
             }
         ],

@@ -66,6 +66,7 @@
         "build": "tsdown",
         "test": "vitest run",
         "test:watch": "vitest",
+        "bench": "vitest bench --run bench",
         "typecheck": "tsc --noEmit",
         "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
         "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
@@ -77,6 +78,7 @@
         "@vitest/coverage-v8": "^4.1.11",
         "happy-dom": "^20.11.6",
         "rxjs": "^7.8.2",
+        "tinybench": "^2.9.0",
         "tsdown": "^0.22.14",
         "typescript": "^7.0.2",
         "vitest": "^4.1.11"

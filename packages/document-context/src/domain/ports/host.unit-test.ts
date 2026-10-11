@@ -56,7 +56,7 @@ interface ListenerEntry {
  * @returns A controllable fake host implementing `HostPort`.
  * @example
  * ```ts
- * import { createFakeHost } from './host.test.js'
+ * import { createFakeHost } from './host.unit-test.js'
  *
  * const host = createFakeHost({ token: 'app:box', connected: true })
  * ```
@@ -135,7 +135,7 @@ export function createFakeHost(init: FakeHostInit = {}): FakeHostPort {
  * @example
  * ```ts
  * import { describe } from 'vitest'
- * import { createFakeHost, hostPortContract } from './host.test.js'
+ * import { createFakeHost, hostPortContract } from './host.unit-test.js'
  *
  * describe('fake host', () => {
  *     hostPortContract(createFakeHost)

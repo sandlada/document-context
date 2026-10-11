@@ -1,6 +1,6 @@
 /**
  * Composition-root tests: the default wired application and its verb
- * surface. Runs in a DOM environment (happy-dom via the infrastructure
+ * surface. Runs in a DOM environment (happy-dom via the integration
  * project include, or an explicit DOM run): mounts need connected elements.
  */
 import { describe, expect, it } from 'vitest'

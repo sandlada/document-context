@@ -1,7 +1,7 @@
 /**
  * Contract tests for the cross-tab storage sync transport.
  *
- * This suite runs under the `infrastructure` project (happy-dom) so `window`
+ * This suite runs under the `integration` project (happy-dom) so `window`
  * and the storage event machinery exist. `BroadcastChannel` is stubbed with
  * an in-memory bus for determinism; one case removes the stub to prove the
  * storage-event fallback stands alone.
