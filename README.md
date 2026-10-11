@@ -1,7 +1,8 @@
 # @sandlada/document-context
 
-![npm version](https://img.shields.io/npm/v/@sandlada/document-context?label=NPM%20Version&labelColor=%2300531f&color=%23a3f5aa)
-![GitHub License](https://img.shields.io/github/license/sandlada/document-context?label=License&labelColor=%2300531f&color=%23a3f5aa)
+![npm version](https://img.shields.io/npm/v/@sandlada/document-context?label=NPM%20Version&labelColor=%23223625&color=%23a0fab0)
+![GitHub License](https://img.shields.io/github/license/sandlada/document-context?label=License&labelColor=%23223625&color=%23a0fab0)
+[![coverage](https://img.shields.io/badge/coverage-95.7%25-a0fab0?labelColor=223625&label=coverage)](./packages/document-context/coverage/index.html)
 
 A modern, function-first Inversion of Control (IoC) container and reactive state management library anchored directly to **`HTMLElement` and physical DOM nodes**.
 
@@ -146,6 +147,7 @@ HTML boolean attributes (such as `disabled`, `checked`, `readOnly`, and `hidden`
 ## API Reference
 
 `@sandlada/document-context` provides modular subpath exports for clean tree-shaking:
+
 - `@sandlada/document-context/core`
 - `@sandlada/document-context/bridge`
 - `@sandlada/document-context/storage`
@@ -155,13 +157,17 @@ HTML boolean attributes (such as `disabled`, `checked`, `readOnly`, and `hidden`
 ### 1. Core Module (`@sandlada/document-context/core`)
 
 #### `createContext(initialState)`
+
 Creates a pure immutable blueprint seed. Zero DOM access, zero I/O side effects.
+
 ```ts
 const blueprint = createContext({ count: 0, theme: 'light' })
 ```
 
 #### `pipe(source, ...operators)`
+
 Functional composition pipeline with progressive TypeScript generic type inference overloads.
+
 ```ts
 const appBlueprint = pipe(
     createContext({ count: 0 }),
@@ -171,15 +177,20 @@ const appBlueprint = pipe(
 ```
 
 #### `withProvider(token, factory, options?)`
+
 Registers a synchronous service provider on the blueprint.
+
 - `lifecycle`: `'scoped'` (default) | `'singleton'` | `'transient'`
 - `multi`: `boolean` (default `false`)
+
 ```ts
 withProvider('auth', (session) => new AuthService(session), { lifecycle: 'scoped' })
 ```
 
 #### `withAsyncProvider(token, asyncFactory, options?)`
+
 Registers an asynchronous service provider with lazy execution and Promise coalescing.
+
 ```ts
 withAsyncProvider('user', async (session) => {
     const res = await fetch('/api/user', { signal: session.abortSignal })
@@ -188,7 +199,9 @@ withAsyncProvider('user', async (session) => {
 ```
 
 #### `withHook(event, handler)`
+
 Attaches declarative lifecycle hooks (`'mount'`, `'dispose'`, `'suspend'`, `'resuscitate'`, `'adopt'`).
+
 ```ts
 withHook('mount', (session) => {
     console.log('Mounted on', session.target)
@@ -197,34 +210,44 @@ withHook('mount', (session) => {
 ```
 
 #### `mount(blueprint, options?)(element)`
+
 Execution boundary that activates the runtime `ISession` on a physical `HTMLElement`. Pass `{ key }` for keyed identity: the session is registered per document and automatically resuscitates (same identity, state, and scoped services) when the same key mounts on a replacement host — an HTMX swap or framework re-render. `suspensionTtlMs` controls the grace period (default 50ms) and `onConflict` (`'throw'` | `'evict'` | `'reset'`) the collision policy.
+
 ```ts
 const session = mount(appBlueprint)(document.getElementById('app-root')!)
 const mountPanel = mount(appBlueprint, { key: 'cart-panel' })
 ```
 
 #### `mountAsync(blueprint, options?)(element)`
+
 Asynchronous mount boundary awaiting eager storage hydration and async initialization. Accepts the same keyed options as `mount`.
+
 ```ts
 const session = await mountAsync(appBlueprint)(document.getElementById('app-root')!)
 ```
 
 #### `select(selector)(session)`
+
 Curried synchronous state snapshot reader.
+
 ```ts
 const getCount = select((s: { count: number }) => s.count)
 const currentCount = getCount(session)
 ```
 
 #### `update(updater)(session)`
+
 Curried state transition verb. Accepts a partial state object or an updater function `(prevState) => nextState`. Returns `boolean` (`false` if session is disposed).
+
 ```ts
 const increment = update<{ count: number }>((s) => ({ count: s.count + 1 }))
 increment(session)
 ```
 
 #### `subscribe(listener)(session)`
+
 Subscribes to reactive state transitions. Returns an unsubscribe teardown function.
+
 ```ts
 const unsubscribe = subscribe((state) => {
     console.log('New state:', state)
@@ -232,9 +255,11 @@ const unsubscribe = subscribe((state) => {
 ```
 
 #### `dispose(session)`
+
 Explicitly tears down the session, executing LIFO cleanups, poisoning the state store, and aborting `session.abortSignal`.
 
 #### `readErrorStream(session)`
+
 Returns an RxJS `Observable<DocumentContextError>` streaming non-fatal errors (e.g., storage parsing failures, hook exceptions).
 
 ---
@@ -242,7 +267,9 @@ Returns an RxJS `Observable<DocumentContextError>` streaming non-fatal errors (e
 ### 2. Bridge Module (`@sandlada/document-context/bridge`)
 
 #### `withBridge(options)`
+
 Registers bidirectional property synchronization between JavaScript state and DOM element properties.
+
 - `properties`: Record of dot-paths (`dataset.*`, `style.*`, `style.--*`, `aria-*`, `value`, `checked`, `hidden`, `elementInternals.value`).
 - `events`: Array of DOM events triggering DOM-to-state sync (default: `['input', 'change']`).
 - `batch`: Microtask write batching (default: `true`).
@@ -265,7 +292,9 @@ withBridge({
 ### 3. Storage Module (`@sandlada/document-context/storage`)
 
 #### `withStorage(options)`
+
 Configures persistent state storage, schema migrations, and cross-tab synchronization.
+
 - `adapter`: `'localStorage'` | `'sessionStorage'` | custom adapter
 - `key`: Storage string key
 - `hydrationStrategy`: `'storageFirst'` (default) | `'domFirst'` | `'blueprintFirst'` | `'merge'`
@@ -291,20 +320,26 @@ withStorage({
 ### 4. DOM & W3C Protocol Module (`@sandlada/document-context/dom`)
 
 #### `inject(token)(target)`
+
 Curried dependency injection verb. Dispatches standard `ContextRequestEvent` bubbling up the physical DOM tree across Shadow DOM boundaries.
+
 ```ts
 // In a child Web Component or Element
 const auth = inject('auth')(this)
 ```
 
 #### `injectAsync(token, options?)(target)`
+
 Asynchronous dependency injection with Promise Coalescing, DFS circular dependency detection, and multi-caller abort isolation.
+
 ```ts
 const user = await injectAsync('user', { signal: abortController.signal })(childElement)
 ```
 
 #### `injectAll(token, options?)(target)` / `injectAllAsync(token, options?)(target)`
+
 Multi-provider accumulation protocol collecting all matching services up the ancestor hierarchy.
+
 - `direction`: `'bottomUp'` (default) | `'topDown'`
 
 ```ts
@@ -316,6 +351,7 @@ const plugins = injectAll('plugin', { direction: 'topDown' })(childElement)
 ### 5. Signals Module (`@sandlada/document-context/signals`)
 
 #### `toSignal(session, selector)`
+
 Adapts a reactive state slice into a TC39 Signal-compatible object with a `.get()` method.
 
 ```ts
