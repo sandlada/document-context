@@ -43,7 +43,7 @@ function main() {
     }
 
     writeFileSync(versionsFile, `${JSON.stringify({ versions: [{ slug, label }, ...versions] }, null, 4)}\n`);
-    console.log(`Configured version '${slug}' (${label}) in site/versions.json.`);
+    console.log(`Configured version '${slug}' (${label}) in packages/site/versions.json.`);
 
     try {
         console.log('Archiving the current documentation...');
@@ -69,7 +69,7 @@ function main() {
 Archived the current documentation as '${slug}'.
 
 Next steps:
-  git add site/src/content/docs/${slug} site/src/content/versions/${slug}.json site/versions.json
+  git add packages/site/src/content/docs/${slug} packages/site/src/content/versions/${slug}.json packages/site/versions.json
   git commit -m "docs(site): archive documentation for ${label}"
 `);
 }

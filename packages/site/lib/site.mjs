@@ -33,44 +33,44 @@ export const packageKeywords = [
 
 const moduleRegistry = [
     {
-        name: 'core',
+        name: 'domain',
         specDescription:
-            'Pure blueprint operators and session verbs: createContext, pipe, mount, select, update and hooks.',
-        apiTitle: 'Core: createContext, mount, update',
+            'Pure domain model, ports, and use cases — no DOM, no I/O.',
+        apiTitle: 'Domain layer exports',
         apiDescription:
-            'Blueprint and session verbs: createContext, pipe, mount, select, update, subscribe, dispose and hooks.',
+            'Scope model, service tokens, lifecycle types, and use-case contracts for @sandlada/document-context.',
     },
     {
-        name: 'bridge',
+        name: 'application',
         specDescription:
-            'Bidirectional sync between state and DOM properties: dataset, style, aria and form values.',
-        apiTitle: 'Bridge: withBridge property sync',
+            'Blueprint operators, session verbs, dependency injection, and RxJS-facing API.',
+        apiTitle: 'Application layer exports',
         apiDescription:
-            'DOM bidirectional bridge: withBridge dot-path rules for dataset, style, aria and form values.',
+            'createContext, pipe, mount, update, provide, inject, subscribe, and related session verbs.',
     },
     {
-        name: 'storage',
+        name: 'infrastructure/dom',
         specDescription:
-            'Persistence adapters, hydration precedence, version migration and cross-tab sync.',
-        apiTitle: 'Storage: withStorage hydration',
+            'DOM host adapters, W3C Context Protocol transport, observer lifecycle, and late binding.',
+        apiTitle: 'Infrastructure: DOM',
         apiDescription:
-            'Persistence for document-context: withStorage adapters, hydration strategies and cross-tab sync.',
+            'Mount boundary, scope resolution, ContextRequestEvent transport, and zero-leak observer wiring.',
     },
     {
-        name: 'dom',
+        name: 'infrastructure/storage',
         specDescription:
-            'W3C Context Protocol scope: inject variants, ContextRequestEvent and observer GC.',
-        apiTitle: 'DOM: inject, context-request',
+            'Persistence adapters, hydration, version migration, and storage sync.',
+        apiTitle: 'Infrastructure: storage',
         apiDescription:
-            'W3C Context Protocol bindings: inject, injectAsync, injectAll plus observer-based zero-leak GC.',
+            'persist operator wiring, localStorage/sessionStorage adapters, and cross-tab sync.',
     },
     {
-        name: 'signals',
+        name: 'infrastructure/ssr',
         specDescription:
-            'TC39 Signals interop: adapt session state slices into fine-grained computed signals.',
-        apiTitle: 'Signals: toSignal adapter',
+            'SSR serialization, null host, and hydration payload resolution.',
+        apiTitle: 'Infrastructure: SSR',
         apiDescription:
-            'TC39 Signals interop: toSignal adapts a session slice into a fine-grained computed signal.',
+            'Serialize and restore session state across server render and client hydration.',
     },
 ];
 
@@ -80,16 +80,24 @@ export const specDescriptions = Object.fromEntries(
     moduleRegistry.map((module) => [module.name, module.specDescription]),
 );
 
+export const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+export const repositoryRoot = resolve(siteRoot, '../..');
+
+export const packageRoot = join(repositoryRoot, 'packages/document-context');
+
 // The TypeScript entry points documented in the API reference. Each one mirrors a
 // published subpath export of `@sandlada/document-context`. The root barrel is not listed
 // because it re-exports the same contracts as the subpaths without adding a
 // runtime API of its own.
-export const entryPoints = moduleRegistry.map((module) => `../src/${module.name}/index.ts`);
+export const entryPoints = moduleRegistry.map(
+    (module) => `../document-context/src/${module.name}/index.ts`,
+);
 
 export const apiPages = {
     index: {
         title: 'API Reference',
-        description: `Every export of the ${moduleRegistry.length} published @sandlada/document-context subpaths: core, bridge, storage, dom and signals.`,
+        description: `Every export of the ${moduleRegistry.length} published @sandlada/document-context subpaths.`,
     },
     ...Object.fromEntries(
         moduleRegistry.map((module) => [
@@ -98,10 +106,6 @@ export const apiPages = {
         ]),
     ),
 };
-
-export const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-export const repositoryRoot = resolve(siteRoot, '..');
 
 export const contentDocsDirectory = join(siteRoot, 'src/content/docs');
 

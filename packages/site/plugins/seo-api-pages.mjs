@@ -32,7 +32,7 @@ const seoApiPages = {
             if (missing.length > 0) {
                 throw new Error(
                     `Generated API pages without curated search metadata: ${missing.join(', ')}. ` +
-                        'Add an entry to site/lib/site.mjs (module name -> title and description).',
+                        'Add an entry to packages/site/lib/site.mjs (module name -> title and description).',
                 );
             }
 

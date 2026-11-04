@@ -1,5 +1,5 @@
 {
-    "name": "@sandlada/document-context-docs",
+    "name": "site",
     "private": true,
     "type": "module",
     "description": "Documentation site for @sandlada/document-context, built with Astro Starlight.",

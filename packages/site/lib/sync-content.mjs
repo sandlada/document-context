@@ -22,6 +22,7 @@ import { GENERATED_MARKER, pruneOwnedFiles, readJsonFile, writeFileIfChanged } f
 import {
     contentDocsDirectory,
     modules,
+    packageRoot,
     repositoryRoot,
     repositoryUrl,
     siteRoot,
@@ -33,19 +34,19 @@ const repositoryFileURL = (file) => `${repositoryUrl}/blob/main/${file}`;
 
 const narrativeDocuments = [
     {
-        source: 'docs/core-concepts.md',
+        source: 'docs/archive/v0.0.1/core-concepts.md',
         target: 'src/content/docs/core-concepts.md',
         description:
             'Two-phase blueprint and mount model plus the data-last curried verbs behind every operation.',
     },
     {
-        source: 'docs/lifecycles.md',
+        source: 'docs/archive/v0.0.1/lifecycles.md',
         target: 'src/content/docs/lifecycles.md',
         description:
             'Four cooperating lifecycles: DOM host, session state machine, services, and state bridge.',
     },
     {
-        source: 'docs/w3c-protocol.md',
+        source: 'docs/archive/v0.0.1/w3c-protocol.md',
         target: 'src/content/docs/w3c-protocol.md',
         description:
             'W3C Context Protocol scope resolution across Shadow DOM, with streaming subscriptions.',
@@ -53,27 +54,34 @@ const narrativeDocuments = [
 ];
 
 function specDocuments() {
-    return modules.map((module) => {
+    return modules.flatMap((module) => {
         const description = specDescriptions[module];
+        const readmePath = join(packageRoot, 'src', module, 'README.md');
+
+        if (!existsSync(readmePath)) {
+            return [];
+        }
 
         if (!description) {
             throw new Error(
-                `Missing spec description for module '${module}' in site/lib/site.mjs. ` +
+                `Missing spec description for module '${module}' in packages/site/lib/site.mjs. ` +
                     'Add an entry so the synced /specs/ page has search metadata.',
             );
         }
 
-        return {
-            source: `src/${module}/README.md`,
-            target: `src/content/docs/specs/${module}.md`,
-            description,
-        };
+        return [
+            {
+                source: relative(repositoryRoot, readmePath).replaceAll('\\', '/'),
+                target: `src/content/docs/specs/${module}.md`,
+                description,
+            },
+        ];
     });
 }
 
 /** Fails fast when the module registry drifted from the published subpaths. */
 function validateRegistry() {
-    const manifest = readJsonFile(join(repositoryRoot, 'package.json'));
+    const manifest = readJsonFile(join(packageRoot, 'package.json'));
     const exported = Object.keys(manifest.exports ?? {})
         .filter((subpath) => subpath !== '.' && subpath !== './package.json')
         .map((subpath) => subpath.replace(/^\.\//, ''))
@@ -84,7 +92,7 @@ function validateRegistry() {
     for (const name of exported) {
         if (!registered.includes(name)) {
             problems.push(
-                `package.json exports "./${name}" but site/lib/site.mjs registers no such module.`,
+                `package.json exports "./${name}" but packages/site/lib/site.mjs registers no such module.`,
             );
         }
     }
@@ -92,12 +100,14 @@ function validateRegistry() {
     for (const name of registered) {
         if (!exported.includes(name)) {
             problems.push(
-                `site/lib/site.mjs registers module '${name}' but package.json has no "./${name}" export.`,
+                `packages/site/lib/site.mjs registers module '${name}' but package.json has no "./${name}" export.`,
             );
         }
 
-        if (!existsSync(join(repositoryRoot, 'src', name, 'index.ts'))) {
-            problems.push(`site/lib/site.mjs registers module '${name}' but src/${name}/index.ts is missing.`);
+        if (!existsSync(join(packageRoot, 'src', name, 'index.ts'))) {
+            problems.push(
+                `packages/site/lib/site.mjs registers module '${name}' but packages/document-context/src/${name}/index.ts is missing.`,
+            );
         }
     }
 
@@ -162,7 +172,7 @@ function mapRepositoryTarget(file) {
         return `/${narrative[1]}/`;
     }
 
-    const spec = file.match(/^src\/([a-z-]+)\/README\.md$/);
+    const spec = file.match(/^(?:packages\/document-context\/)?src\/([a-z-]+)\/README\.md$/);
 
     if (spec) {
         return `/specs/${spec[1]}/`;
@@ -248,7 +258,7 @@ export function syncContent({ force = false } = {}) {
             unchanged += 1;
         }
 
-        console.log(`Synced ${document.source} -> site/${document.target} (${outcome})`);
+        console.log(`Synced ${document.source} -> packages/site/${document.target} (${outcome})`);
     }
 
     const pruned = pruneOwnedFiles(
@@ -257,7 +267,7 @@ export function syncContent({ force = false } = {}) {
     );
 
     for (const file of pruned) {
-        console.log(`Pruned stale generated page site/src/content/docs/specs/${file}`);
+        console.log(`Pruned stale generated page packages/site/src/content/docs/specs/${file}`);
     }
 
     const prunedNarrative = pruneOwnedFiles(
@@ -270,7 +280,7 @@ export function syncContent({ force = false } = {}) {
     );
 
     for (const file of prunedNarrative) {
-        console.log(`Pruned stale generated page site/src/content/docs/${file}`);
+        console.log(`Pruned stale generated page packages/site/src/content/docs/${file}`);
     }
 
     return { created, updated, unchanged, pruned: pruned.length + prunedNarrative.length };

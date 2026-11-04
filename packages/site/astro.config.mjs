@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
@@ -8,7 +9,7 @@ import starlightTypeDoc from 'starlight-typedoc';
 import starlightVersions from 'starlight-versions';
 import seoApiPages from './plugins/seo-api-pages.mjs';
 import overloadCodeblocks from './plugins/overload-codeblocks.mjs';
-import { entryPoints, modules, packageName, siteDescription, siteUrl } from './lib/site.mjs';
+import { entryPoints, modules, packageName, packageRoot, siteDescription, siteUrl } from './lib/site.mjs';
 import { resolveSourceRevision } from './lib/source-revision.mjs';
 import { syncContent } from './lib/sync-content.mjs';
 
@@ -25,12 +26,24 @@ const sourceRevision = resolveSourceRevision();
 // link the link validator checks.
 const apiSidebarGroup = {
     label: 'API Reference',
-    items: entryPoints.map((entryPoint) => {
-        const module = entryPoint.split('/').at(-2);
-
-        return { label: module, link: `/api/${module}/` };
-    }),
+    items: modules.map((module) => ({
+        label: module,
+        link: `/api/${module}/`,
+    })),
 };
+
+const specSidebarItems = modules
+    .filter((module) => existsSync(join(packageRoot, 'src', module, 'README.md')))
+    .map((module) => `specs/${module}`);
+
+const sidebar = [
+    { label: 'Start Here', items: ['getting-started', 'core-concepts'] },
+    { label: 'Guides', items: ['lifecycles', 'w3c-protocol'] },
+    ...(specSidebarItems.length > 0
+        ? [{ label: 'Module specs', items: specSidebarItems }]
+        : []),
+    apiSidebarGroup,
+];
 
 // Search-engine ownership checks are supplied by the build environment, so the
 // tokens stay out of the repository. Set them on the Workers Builds project.
@@ -72,7 +85,7 @@ export default defineConfig({
             head,
             routeMiddleware: ['./src/starlightRouteData.ts'],
             editLink: {
-                baseUrl: 'https://github.com/sandlada/document-context/edit/main/site/',
+                baseUrl: 'https://github.com/sandlada/document-context/edit/main/packages/site/',
             },
             social: [
                 { icon: 'github', label: 'GitHub', href: 'https://github.com/sandlada/document-context' },
@@ -91,7 +104,7 @@ export default defineConfig({
                 },
                 starlightTypeDoc({
                     entryPoints,
-                    tsconfig: '../tsconfig.json',
+                    tsconfig: '../document-context/tsconfig.json',
                     output: 'api',
                     typeDoc: {
                         outputFileStrategy: 'modules',
@@ -134,12 +147,7 @@ export default defineConfig({
                 ...(versions.length > 0 ? [starlightVersions({ versions })] : []),
                 starlightLinksValidator(),
             ],
-            sidebar: [
-                { label: 'Start Here', items: ['getting-started', 'core-concepts'] },
-                { label: 'Guides', items: ['lifecycles', 'w3c-protocol'] },
-                { label: 'Module specs', items: modules.map((module) => `specs/${module}`) },
-                apiSidebarGroup,
-            ],
+            sidebar,
         }),
         mdx(),
         sitemap({

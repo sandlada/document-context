@@ -20,7 +20,13 @@
         "typecheck:build": "pnpm --filter @sandlada/document-context typecheck:build",
         "typecheck:test": "pnpm --filter @sandlada/document-context typecheck:test",
         "demo:dev": "pnpm --filter @sandlada/demo dev",
-        "demo:build": "pnpm --filter @sandlada/demo build"
+        "demo:build": "pnpm --filter @sandlada/demo build",
+        "site:dev": "pnpm --filter site dev",
+        "site:build": "pnpm --filter site build",
+        "site:preview": "pnpm --filter site preview",
+        "site:sync": "pnpm --filter site sync",
+        "site:check": "pnpm --filter site check",
+        "site:verify": "pnpm --filter site verify"
     },
     "engines": {
         "node": ">=22.12.0"

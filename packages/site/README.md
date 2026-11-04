@@ -184,25 +184,25 @@ the dashboard offers when a repository is connected; there is no deployment job 
 | --- | --- |
 | Project name | `document-context` (must match `name` in `wrangler.jsonc`) |
 | Production branch | `main` |
-| Build command | `pnpm install --frozen-lockfile && pnpm --filter @sandlada/document-context-docs verify` |
-| Deploy command | `pnpm --filter @sandlada/document-context-docs exec wrangler deploy` |
+| Build command | `pnpm install --frozen-lockfile && pnpm --filter site verify` |
+| Deploy command | `pnpm --filter site exec wrangler deploy` |
 | Environment variable | `NODE_VERSION=26` (Astro requires Node >= 22.12) |
 | Custom domain | `document-context.sandlada.com` |
 
-The repository root is the pnpm workspace; install once at the root so `site/` dependencies are linked.
+The repository root is the pnpm workspace; install once at the root so `packages/site` dependencies are linked.
 `pnpm run verify` already ends with `astro build` plus `verify:seo`, so no trailing `pnpm run build`
 is needed. Do not skip the explicit `pnpm install --frozen-lockfile` in the build command: Cloudflare's
 automatic install hook may not match the workspace layout —
 without a root install `check:snippets` fails on `astro/tsconfigs/strict not found`.
 
-`npx wrangler deploy --dry-run --config site/wrangler.jsonc` validates the configuration locally
+`npx wrangler deploy --dry-run --config packages/site/wrangler.jsonc` validates the configuration locally
 without authenticating, including that the assets directory resolves.
 
 `.node-version` pins the same Node version inside the build root, so the version travels with the
 repository even if the environment variable is ever missing.
 
-Cloudflare checks out the whole repository, so TypeDoc can read `../src` and `../tsconfig.json`
-even though the build runs inside `site/`.
+Cloudflare checks out the whole repository, so TypeDoc can read `../document-context/src` and
+`../document-context/tsconfig.json` even though the build runs inside `packages/site/`.
 
 Workers Builds rebuilds on every change in the repository; unlike Pages it has no build watch
 paths, so unrelated commits also trigger a build.

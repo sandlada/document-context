@@ -69,4 +69,4 @@ npx size-limit         # §14.5 預算
 
 - v0.1.0 發佈時，`DESIGN.md`、`docs/core-concepts.md`、`docs/lifecycles.md`、`docs/w3c-protocol.md` 移入 `docs/archive/`（標註為 v0.0.1 歷史文件）。
 - 根 `README.md` 重寫為 v0.1.0 對外文案；`AGENTS.md` 於 M0 改寫為新分層規範；`TASK.md` 由新世代 TASK 檔取代。
-- `site/` 於 P1 評估重做，不阻塞 v0.1.0。
+- `packages/site/` 於 P1 評估重做，不阻塞 v0.1.0。

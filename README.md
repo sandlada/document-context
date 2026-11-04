@@ -83,7 +83,7 @@ Second-tier sync projections (`mountSync`, `injectSync`, `selectSync`, …) exis
 | :--- | :--- |
 | [`packages/document-context`](./packages/document-context) | Publishable library (`0.1.0-alpha.0`) |
 | [`packages/demo`](./packages/demo) | Vite multi-page demo |
-| [`site/`](./site) | Starlight docs (legacy `0.0.1` snapshot; site refresh is P1) |
+| [`packages/site`](./packages/site) | Starlight docs (legacy `0.0.1` snapshot; site refresh is P1) |
 | [`docs/archive/v0.0.1`](./docs/archive/v0.0.1) | Historical v0.0.1 design docs |
 
 ---

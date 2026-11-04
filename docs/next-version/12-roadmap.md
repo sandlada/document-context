@@ -31,7 +31,7 @@
 - Suspended 留存調參（`retention` 命名 + `maxSuspendedPerDocument` / 批上限 K / token 桶常數，D1 調參）。
 - **`suspend` / `resuscitate` / `adopt` 原生生命週期事件**（目前由集中觀察者內部處理）。
 - 儲存寫入 debounce 選項；`@sandlada/document-context/testing`（契約套件與 fakes 公開）。
-- `site/` 文件站重做。
+- `packages/site/` 文件站重做。
 
 ## 12.2 里程碑
 

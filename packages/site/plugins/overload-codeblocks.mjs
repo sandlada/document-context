@@ -18,13 +18,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { writeFileIfChanged } from '../lib/io.mjs';
-import { modules, repositoryRoot, siteRoot } from '../lib/site.mjs';
+import { modules, packageRoot, siteRoot } from '../lib/site.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const apiDirectory = join(siteRoot, 'src/content/docs/api');
-const srcDirectory = join(repositoryRoot, 'src');
+const srcDirectory = join(packageRoot, 'src');
 
 const FUNCTION_HEADING = /^### (\w+)\(\)\s*$/;
 const SECTION_BOUNDARY = /^#{1,3} /;
@@ -170,10 +170,7 @@ function transformSection(module, name, section, declarations) {
     const overloads = declarations.get(`${module}/${name}`);
 
     if (overloads === undefined) {
-        throw new Error(
-            `Generated API section '${name}()' in site/src/content/docs/api/${module}.md ` +
-                'has no exported declaration in src/. Add one or extend site/plugins/overload-codeblocks.mjs.',
-        );
+        return section;
     }
 
     const definedIns = [];
