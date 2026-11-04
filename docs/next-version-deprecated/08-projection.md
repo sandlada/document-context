@@ -87,7 +87,7 @@ onResuscitate((session, host) => {
 
 - 本庫不代管 DOM 綁定；Suspended → Resuscitated 後，使用者的自建綁定需自行重綁（`native()` 引用規則見 [02-domain-model.md](./02-domain-model.md) §2.3）。
 - Skipped-mount 說明：若該 keyed session 曾以 Initializing 源進入 Suspended（`onMount` 尚未跑過），首 resuscitate 會先按 FIFO 跑遞延 `onMount`（註冊 cleanups），再跑 `onResuscitate`；事件仍為 `resuscitated`（`details.setup:'deferred-mount'`）——重綁邏輯照常寫在 `onResuscitate` 即可。
-- Suspended 期間 `session.host.native()` 取 deref-or-throw 語義（命中返舊 detached 節點並標註，失配拋指定碼）：Suspended 期勿 capture `native()` 引用（含 lazy / transient 工廠內），重綁時一律重取。
+- Suspended 期間 `session.host.native()` 取 deref-or-throw 語義（命中返舊 detached 節點；失配拋 `HOST_INVALID`，`details.reason: 'native-unavailable'`）：Suspended 期勿 capture `native()` 引用（含 lazy / transient 工廠內），重綁時一律重取。
 
 ## 8.3 常見問答
 

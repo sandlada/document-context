@@ -63,7 +63,7 @@ npx size-limit         # §14.5 預算
 - 0.x 期：minor 可包含 BREAKING CHANGE（於 changelog 標明）；patch 僅修補。
 - 版本範圍：0.x 二等移除走 any-minor-with-gate；1.0 後二等移除視同 BREAKING，須 major。現行政策（D-114）：`0.1.x` 全程 `@deprecated`，`0.2.0` 全面移除。
 - 二等（同步投影）API（見 [03-application-api.md](./03-application-api.md) §3.1.1）：不列入穩定契約；`0.1.x` 實作落地即標記 `@deprecated`，`0.2.0` 全面移除；實際移除前需先確立 SSR / 渲染與同步工廠替代路徑（見 [13-decisions.md](./13-decisions.md) D-71 增補 D-112、D-114）；CHANGELOG 標註必要不充分。
-- 發佈前檢查：`docs/next-version/` 與實作一致（12 §12.5）。
+- 發佈前檢查：`docs/next-version-deprecated/` 與實作一致（12 §12.5）。
 
 ## 14.8 舊資產處置
 

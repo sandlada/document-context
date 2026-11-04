@@ -1,6 +1,6 @@
 # 15 — 術語表 (Glossary)
 
-本表固定 `docs/next-version/` 的用語；與其他文件衝突時以此為準。情態力度見 README conventions legend（必須/不得 = normative，應該/建議 = recommended，可/允許 = permitted，其餘 informative）。
+本表固定 `docs/next-version-deprecated/` 的用語；與其他文件衝突時以此為準。情態力度見 README conventions legend（必須/不得 = normative，應該/建議 = recommended，可/允許 = permitted，其餘 informative）。
 
 ## 架構與模型
 

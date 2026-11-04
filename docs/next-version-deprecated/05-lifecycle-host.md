@@ -194,15 +194,15 @@ class MyElement extends HTMLElement {
 | 同 token、不同宿主、原 Session 仍在 `Suspended` TTL 內 | 復甦（見下） |
 | 同 token、原 Session 已 observed-disconnect 待微任務 re-check（Suspended-in-waiting） | 視同 `Suspended`，走復甦（D-15 state-wins），非衝突 |
 
-- **evict 對 suspend 優先序**：跨 host 乘 `Suspended` 乘 `evict` / `reset` → 復甦勝；同 host swap 乘 `evict` → 處置舊者後掛載新者；跨 host 乘真雙活乘 `evict` → 處置舊者後掛載新者；`reset` 跨 host 乘 `Suspended` → 復甦（事件以 resuscitate 為勝，種子語義等價）。
+- **evict 對 suspend 優先序**：跨 host 乘 `Suspended` 乘 `evict` / `reset` → 復甦勝；同 host swap 乘 `evict` → 處置舊者後掛載新者；**跨 host 真雙活（兩個已連線宿主同 token）一律 `KEYED_SESSION_CONFLICT`，無視 `onConflict`（含 `evict`）**；`reset` 跨 host 乘 `Suspended` → 復甦（事件以 resuscitate 為勝，種子語義等價）。
 - **遞延 `onMount`**：`Initializing` 源 `Suspended` 攜 `onMountSkipped` 標；首復甦按「遞延 `onMount` FIFO → 註冊清理閉包 → `onResuscitate` → `context-mount` → `lifecycle$ resuscitated`（`details.setup:'deferred-mount'`）」執行；之後與常態 `Mounted` 無異。
 - **復甦**（`resuscitate` 轉換；`resuscitated` 事件；`resuscitation` 過程）：沿用原 Session 的藍圖與身分；狀態完整延續（state 勝出，不重跑水合）。使用者自建的 DOM 綁定請於 `onResuscitate` 後重讀 `native()` 並重綁（見 [08-projection.md](./08-projection.md)）。`suspensionTtlMs` 預設 50；`0` = 不進 Suspended 立即銷毀；`Infinity` 僅當 `retention:'pinned'` 並存時生效（見下）。
 - **留存槽**：`Suspended` 條目由 Application 擁有的 per-Document Suspended 表持強引用槽 `{ ref, weak }`；釋放點三者其一：復甦、處置、TTL 到期。留存與排程器脫鉤。
 - **原生引用弱化**：`Suspended` 進入時 facade 強原生降為 `WeakRef`，復甦時重取新宿主；`Suspended` 期間 `native()` 取 deref-or-throw：deref 命中返舊（detached）節點並標註，deref 失配拋指定碼（碼號由 02 §2.7 稅制定案）。
 - **留存上限**：`maxSuspendedPerDocument` 預設 100；溢出受害規則 oldest-first，`Suspended → Disposed` 走完整處置路（`onDispose` LIFO 加 `lifecycle$ disposed`）；可觀測通道為 `lifecycle$ disposed` 且 `details.evicted:'suspended-cap'`，`errors$` 不另推；被逐出 token 的復甦變全新掛載。
-- **`Infinity` 門**：`suspensionTtlMs: Infinity` 僅當 `retention:'pinned'` 明式 opt-in 並存時生效；擁有者為 mounter；Application teardown 全清 pinned 條目；裸 `Infinity` 無標即拋配置錯（碼歸 02 §2.7 稅制）。
+- **`Infinity` 門**：`suspensionTtlMs: Infinity` 僅當 `retention:'pinned'` 明式 opt-in 並存時生效；擁有者為 mounter；Application teardown 全清 pinned 條目；裸 `Infinity` 無標即於 `mount` 選項驗證期拋 configuration `Error`（非 `DocumentContextError` 十碼，見 02 §2.7 表下註）。
 - **reset-seed 與三者正交**：復甦走不重跑水合；`reset` 走 seed-substitute 跑水合（舊態替代「藍圖種子」槽位，其餘策略順序不變）；全新掛載種子為藍圖 initial；三者觸發條件互斥（復甦：同 token 加 TTL 內加不同宿主；`reset`：同宿主衝突加 `onConflict:'reset'`）。`reset` 首次 write-back 與正常掛載一致（微任務批次，`v` 沿舊態版本）。
-- **registry**：身分存活於 per-Document registry（`WeakMap<Document, Map<string, WeakRef<Session>>>`），`FinalizationRegistry` 作兜底；`adoptNode` 時 Session 與其 registry 條目遷移至新 Document；跨 Document 復甦不支援（請重新掛載）。
+- **registry 與宿主索引**：**Mounted 存活期**由 Application 的 `HostSessionMap`（`WeakMap<native host, { facade, record }>`）索引，同宿主幂等 `mount` 與 `getSessionSync` / `session$` 皆經此表；keyed **身分**另存 per-Document `WeakMap<Document, Map<string, WeakRef<Session>>>`（僅 token → 復甦解析），`FinalizationRegistry` 作兜底。`adoptNode` 時 Session、宿主索引與 keyed 條目一併遷移至新 Document；跨 Document 復甦不支援（請重新掛載）。
 - **TTL 計時**：背景分頁的計時器可能被瀏覽器節流，TTL 只保證「不早於」設定時間觸發。
 - **Suspended 期服務面規則**（規範，單一來源為 02 §2.5.1，本節鏡像）：`Suspended` 期服務面全活（scoped 緩存留、transient 可調、lazy 可首建、`state$` / `subscribe$` / `errors$` / storage 照常演進）；僅 element-target 解析路徑盲（無新命中；`session$` 吐 null，見 §5.8）。註一：`Suspended` 期首建的 lazy 或 transient 工廠勿 capture `native()`（detached，見留存弱化段）。註二：`subscribe$` 回調 `Suspended` 期照推，背壓與可見性歸呼叫者（見 [08-projection.md](./08-projection.md) recipes）。
 

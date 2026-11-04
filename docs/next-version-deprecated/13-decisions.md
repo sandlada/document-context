@@ -1,8 +1,10 @@
 # 13 — 決策登錄 (Decision Register)
 
-本文件是 `docs/next-version/` 的 **單一事實來源（single source of truth）** 決策清單：凡藍圖文件之間的取捨、未定選項與勘誤，一律在此拍板並回寫正文。日後變更決策需新開編號（不覆寫歷史）。
+本文件是 `docs/next-version-deprecated/` 的 **單一事實來源（single source of truth）** 決策清單：凡藍圖文件之間的取捨、未定選項與勘誤，一律在此拍板並回寫正文。日後變更決策需新開編號（不覆寫歷史）。
 
 編號規則：`D-nn` 穩定不重用；「落地」指出正文中的規範位置。
+
+**現行政策速查**（歷史條款與正文衝突時優先）：[13-decisions-current-policy.md](./13-decisions-current-policy.md)。
 
 ## 13.1 勘誤修正（正文一致性）
 

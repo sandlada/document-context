@@ -3,7 +3,7 @@
 System instructions and coding conventions for AI agents working on `@sandlada/document-context` **v0.1.0** (layered monorepo).
 
 > **Reference documents**
-> - **Architecture & API**: [`docs/next-version/`](./docs/next-version/README.md) (canonical; especially [01-architecture](./docs/next-version/01-architecture.md), [03-application-api](./docs/next-version/03-application-api.md), [10-testing](./docs/next-version/10-testing.md)).
+> - **Architecture & API (deprecated spec)**: [`docs/next-version-deprecated/`](./docs/next-version-deprecated/README.md) — historical blueprint; prefer `packages/document-context` source and tests when they disagree (especially [01-architecture](./docs/next-version-deprecated/01-architecture.md), [03-application-api](./docs/next-version-deprecated/03-application-api.md), [10-testing](./docs/next-version-deprecated/10-testing.md)).
 > - **Roadmap & cutover**: [`TASK.md`](./TASK.md).
 > - **v0.0.1 history only**: [`docs/archive/v0.0.1/`](./docs/archive/v0.0.1/README.md) — not a compatibility contract.
 
@@ -18,7 +18,7 @@ Publishable code lives in [`packages/document-context`](./packages/document-cont
 3. **RxJS first-class** — `state$`, `errors$`, `lifecycle$`; required peer `rxjs`.
 4. **Strict layering** — `domain` (zero DOM) ← `application` ← `infrastructure`; composition root at [`packages/document-context/src/index.ts`](./packages/document-context/src/index.ts).
 5. **Late-binding DI** — async-first `inject` / `inject$`; sync `*Sync` verbs are deprecated second-tier projections.
-6. **No built-in DOM bridge** — no `withBridge`; users compose DOM updates via streams (see [08-projection](./docs/next-version/08-projection.md)).
+6. **No built-in DOM bridge** — no `withBridge`; users compose DOM updates via streams (see [08-projection](./docs/next-version-deprecated/08-projection.md)).
 
 ### Two-phase model
 
@@ -54,7 +54,7 @@ update((s) => ({ count: s.count + 1 }))(session)
 
 ### Tokens
 
-Use `defineToken('namespace:name')` and `ServiceRegistry` declaration merging (see [02b-tokens](./docs/next-version/02b-tokens.md)). Keyed identity uses `mount(bp, { token })`.
+Use `defineToken('namespace:name')` and `ServiceRegistry` declaration merging (see [02b-tokens](./docs/next-version-deprecated/02b-tokens.md)). Keyed identity uses `mount(bp, { token })`.
 
 ### Package exports
 
@@ -103,7 +103,7 @@ pnpm run demo:dev
 - Async providers: in-flight coalescing; reject evicts cache for retry.
 - Internal subscriptions: `takeUntil(session.abort$)` pattern in application/infrastructure wiring.
 
-Full matrices: [05-lifecycle-host](./docs/next-version/05-lifecycle-host.md), [10-testing §10.5](./docs/next-version/10-testing.md).
+Full matrices: [05-lifecycle-host](./docs/next-version-deprecated/05-lifecycle-host.md), [10-testing §10.5](./docs/next-version-deprecated/10-testing.md).
 
 ---
 

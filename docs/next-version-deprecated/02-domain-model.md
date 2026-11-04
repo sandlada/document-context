@@ -89,14 +89,14 @@ export interface Session<S extends Record<PropertyKey, unknown> = Record<Propert
 export type LifecycleEvent =
     | { readonly type: 'mounted' }
     | { readonly type: 'suspended' }
-    | { readonly type: 'resuscitated' }
+    | { readonly type: 'resuscitated', readonly details?: { readonly setup?: 'deferred-mount' } }
     | { readonly type: 'adopted', readonly owner: unknown }
-    | { readonly type: 'disposed' }
+    | { readonly type: 'disposed', readonly details?: { readonly evicted?: 'suspended-cap' } }
 ```
 
 - `Session` 是 domain 概念；具體 `Native` 透過泛型參數 `Host` 顯露（domain 保持 `unknown`，公共面預設綁定為 `HTMLElement`，見 §2.6.1）。
 - `host` 是 **穩定代理（facade）**：`Session` 持有的 `HostPort` 參考永不失效，內部委派至「當前宿主」；keyed 復甦時代理換向新宿主，既有綁定（訂閱、`attach`）自然跟隨。facade 存活不等於宿主存活：不得以輪詢 facade / `isConnected` 觀測 Session-target 死亡；死亡經 `abort$` 訂閱鏈結結算為 `DISPOSED_SESSION`（見 [09b-late-binding.md](./09b-late-binding.md) §9b.2）。
-- `native()` 於 `Suspended` 期間取 deref-or-throw 語意：deref 命中返舊（detached）節點並標註，失配拋指定碼（碼號見 §2.7）；facade 於進入 `Suspended` 時將強 native 降為 `WeakRef`，復甦時重取新 host，故留存釘住的是狀態而非 DOM 子樹。需要跨復甦延續的原生引用，一律於 `onResuscitate` 或復甦後重新讀取。
+- `native()` 於 `Suspended` 期間取 deref-or-throw 語意：deref 命中返舊（detached）節點；deref 失配拋 `HOST_INVALID`（`details.reason: 'native-unavailable'`）；facade 於進入 `Suspended` 時將強 native 降為 `WeakRef`（規範；host adapter 落地同步），復甦時重取新 host。需要跨復甦延續的原生引用，一律於 `onResuscitate` 或復甦後重新讀取。
 - `abortSignal` 與 `abort$` 同源：Session 進入銷毀時即時 `abort()`。
 
 ## 2.4 作用域模型
@@ -143,7 +143,7 @@ stateDiagram-v2
 - DOM 組合下 `mount` 要求宿主已連線，否則 `UNCONNECTED_NODE`；`ssr` 組合不受此限。
 - `Suspended` 期間：service-plane 全活（scoped 緩存留、transient 可調、lazy 可首建、`state$` / `subscribe$` / `errors$` / storage 照常演進）；僅 element-target 解析路徑盲（無新命中；`session$` 吐 null，見 [03-application-api.md](./03-application-api.md) §3.3.1）。同步投影（`selectSync` / `injectSync` / `update`）仍可用（scoped 保持）；復甦時沿用原藍圖與狀態（不重跑水合；`02 §2.5.1` 為規範源，術語表為鏡像）；使用者自建的 DOM 綁定請於 `onResuscitate` 後重讀 `native()` 並重綁（見 [08-projection.md](./08-projection.md)）。
     - 留存：Suspended 條目由 Application 擁有的 per-Document Suspended 表持強引用槽 `{ref, weak}`；釋放點為 resuscitate / dispose / TTL-expiry 三者其一。有界：`maxSuspendedPerDocument` 預設 100，溢出 oldest-first 經完整 dispose 路逐出為 Disposed（`onDispose` LIFO + `lifecycle$ disposed` 且 `details.evicted='suspended-cap'`，`errors$` 不另推）；被逐出 token 的 resuscitate 變 fresh-mount。
-    - `Infinity` 門：`suspensionTtlMs: Infinity` 僅當 `retention:'pinned'` 明式 opt-in 並存時生效，owner 為 mounter，Application-teardown 全清 pinned 條目；裸 `Infinity` 無 flag 即拋配置錯（碼見 §2.7）。
+    - `Infinity` 門：`suspensionTtlMs: Infinity` 僅當 `retention:'pinned'` 明式 opt-in 並存時生效，owner 為 mounter，Application-teardown 全清 pinned 條目；裸 `Infinity` 無 flag 即於 `mount` 選項驗證期拋 **configuration `Error`**（非 `DocumentContextError` 十碼表；訊息含 `suspensionTtlMs: Infinity requires retention: 'pinned'`）。
     - 註 (i)：Suspended 期首建的 lazy / transient 工廠勿 capture `native()`（當時為 detached，見 §2.3 deref-or-throw）。註 (ii)：`subscribe$` 回調 Suspended 期照推，背壓與可見性歸呼叫者（見 [08-projection.md](./08-projection.md) recipes）。
 - 單例 server 範圍：單例按請求（按 Application 實例），永不跨請求共享（見 [07-ssr-hydration.md](./07-ssr-hydration.md) §7.7 與 [09-infrastructure.md](./09-infrastructure.md) §9.7）。
 - `Disposed` 後：狀態 store 進入毒化保護——`update()` 回傳 `false`、`selectSync` 回傳最後快照、`subscribe$` 回傳已完成的空流、`inject*` 拋 `DISPOSED_SESSION`。
@@ -315,7 +315,7 @@ export class DocumentContextError extends Error {
 | `ASYNC_SERVICE_NOT_READY` | 同步路徑觸及尚未就緒的非同步服務或水合（`injectSync` 對非同步服務；`mountSync` 遇非同步 eager 服務或非同步儲存；in-flight `mount` 窗口內 `mountSync` 以 `details.phase:'Initializing'` 指到可 `await` 續的 promise） | `{phase?:string}` | 致命 |
 | `KEYED_SESSION_CONFLICT` | 身分衝突：同宿主不同 token、同 token 雙活躍宿主、`options.token` 與 `data-context-key` 矛盾 | `{token, hosts?:number}` | 致命 |
 | `TOKEN_INVALID` | `defineToken` / `mount` 身分正規化驗證失敗（僅字串形式驗證；`PrivateToken` 物件豁免） | `{token, reason:string}` | 致命 |
-| `HOST_INVALID` | `toHost` 對非宿主輸入（非 Element / 非 HostPort，含 Text / Fragment）拒絕 | `{reason:string}` | 致命 |
+| `HOST_INVALID` | `toHost` 對非宿主輸入（非 Element / 非 HostPort，含 Text / Fragment）拒絕；或 `native()` 在 Suspended 期 WeakRef deref 失配 | `{reason:string}` | 致命 |
 | `SINGLETON_CONFLICT` | 同 Document 對同名 singleton 重複註冊（首個註冊者勝出，後續忽略；路由至輸家 mount session 的 `errors$`，`mounted` 之前發射） | `{token, winner:'first-registration', factoryMismatch:boolean}` | 非致命（`errors$`） |
 | `INVALID_STORAGE_DATA` | 儲存資料毀損、遷移失敗、版本過新（含 quota / 寫失敗以 `details.op:'write'` 承載；`v > version` 置 `storageVersionGuard:'newer-blocked'`，後續該 key 批次寫全攔，讀 / 訂閱 / 狀態演進照常，首攔追加一次同碼且 `details.guarded:true`；解除 = bump `version` 重 mount） | `{op?:string, key?:string, storageKind?:string, guarded?:boolean}` | 非致命（安全降級至藍圖種子；版本過新時不覆寫，只讀後端模式） |
 | `HOOK_ERROR` | 鉤子 / 清理異常（`onMount` 除外；`onMount` 失敗即 mount 失敗：mount Promise 拒絕 + 同步推一條 `HOOK_ERROR` 供觀測，走 dispose 清理，不派 `context-mount`，不推 `mounted`） | `{hook:string, error:unknown}` | 非致命（`errors$`；`onMount` 例外） |
@@ -325,6 +325,7 @@ export class DocumentContextError extends Error {
 - 致命錯誤直接拋出；`details` 形狀以本表 `details` 列為準，`resolutionGuide` 於拋出點附帶。eager 工廠 reject → mount Promise 以裸因拒絕（不包裝、不推 `errors$`）。
 - `errors$` 溢出：滿時丟最舊保最新並計 `dropped`，首訂排空全部緩衝後附記賬（末條 `details.dropped:n`）；第二及後續訂閱者僅收訂閱後新事件。dispose 終態錯誤從未被訂閱則保留至首訂，首訂收殘餘後 complete；至 GC / 卸載仍無人訂閱則調 `reportError(err)`。
 - **取消與終止不屬錯誤分類學**：`AbortSignal` abort 為消費者主動停止——Observable 以 `complete()`、Promise 以 `signal.reason` 拒絕（預設平台 `AbortError`）；目標 Session 死亡則以 `DISPOSED_SESSION` 終止（見 [09b-late-binding.md](./09b-late-binding.md) §9b.2 與 03 §3.3.1）。取消不推送 `errors$`。
+- **Mount 選項 configuration 例外**：裸 `suspensionTtlMs: Infinity`（無 `retention: 'pinned'`）拋一般 `Error`，不進上表（見 §2.5.1 Infinity 門）。
 
 ## 2.8 領域不變式（唯一規範源；每條以 `02 #n` 穩定 ID 引用）
 

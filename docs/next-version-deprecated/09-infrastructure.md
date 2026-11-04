@@ -128,7 +128,7 @@ export interface ContextRequestDetail<T = unknown> {
 `infrastructure/dom/observer.ts` 提供 per-Document 的集中觀察者：
 
 - **單一** `MutationObserver` 監看 `document`，避免每個 Session 各自觀察。
-- 節點以 `WeakMap` / `WeakRef` 追蹤，**零強引用洩漏**。
+- 節點以 `WeakMap` / `WeakRef` 追蹤 DOM 節點與 pending；**Mounted** Session 另由 Application `HostSessionMap` 強索引宿主（見 [05-lifecycle-host.md](./05-lifecycle-host.md) §5.5）；**Suspended** 條目由 per-Document 留存表持 Session 強引用（規範留存，非洩漏）。
 - `FinalizationRegistry` 作 GC 兜底清理（永不作主機制；主機制為批次剪除，見 [09b-late-binding.md](./09b-late-binding.md) §9b.3）。
 - 節點脫離時經 `SchedulerPort.microtask` 二次確認（DOM adapter 預設即 `queueMicrotask`；防拖拽/重排誤殺）。
 - `adoptNode`（`adoptedCallback`）時重綁觀察者與 registry 至新 Document。

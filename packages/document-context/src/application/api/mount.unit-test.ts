@@ -6,7 +6,7 @@ import type { ServiceRegistration } from '../../domain/model/service.js'
 import type { Token } from '../../domain/model/token.js'
 import type { HostPort } from '../../domain/ports/host.js'
 import type { StoragePort } from '../../domain/ports/storage.js'
-import type { Session } from '../../domain/model/session.js'
+import type { LifecycleEvent, Session } from '../../domain/model/session.js'
 import type { MountSessionRecord } from '../../domain/usecases/mount.js'
 import {
     createFakeHost,
@@ -706,6 +706,12 @@ describe('mount waiting-disconnect and resuscitation', () => {
         const hostTwo = createFakeHost({ connected: true })
         const hostThree = createFakeHost({ connected: true })
         const first = await createMount(ctx)(blueprintOf({ n: 1 }), { token: 'app:one' })(hostOne)
+        const disposedFromCap: Array<LifecycleEvent> = []
+        first.lifecycle$.subscribe((event) => {
+            if (event.type === 'disposed') {
+                disposedFromCap.push(event)
+            }
+        })
         const second = await createMount(ctx)(blueprintOf({ n: 2 }), { token: 'app:two' })(hostTwo)
         const third = await createMount(ctx)(blueprintOf({ n: 3 }), { token: 'app:three' })(hostThree)
         hostOne.setConnected(false)
@@ -716,6 +722,7 @@ describe('mount waiting-disconnect and resuscitation', () => {
         hostThree.setConnected(false)
         scheduler.flushMicrotasks()
         expect(first.isDisposed).toBe(true)
+        expect(disposedFromCap).toEqual([{ type: 'disposed', details: { evicted: 'suspended-cap' } }])
         expect(second.isSuspended).toBe(true)
         expect(third.isSuspended).toBe(true)
     })

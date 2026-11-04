@@ -2,7 +2,7 @@
 
 所有公共 API 皆為 **函式優先、data-last、柯里化**。運算子（`provide*`、`onXxx`、`persist`）作用於藍圖；動詞（`mount`、`inject` / `inject$`、`session$`、`update`、`dispose`…）作用於 Session 或宿主。
 
-本套件的設計身份是 **異步流（async-first）**：解析經晚綁定流 / Promise（缺席 = pending；見 [09b-late-binding.md](./09b-late-binding.md)）；同步動詞僅為熱快照投影，身分為**二等**（見 §3.1.1）——不列入穩定契約，可於任何 minor 移除。命名公約：異步一等無 `Async` 後缀；同步二等帶 `Sync` 後缀（見 [13-decisions.md](./13-decisions.md) §13.13）。DOM 投影與雙向綁定為非目標（見 [08-projection.md](./08-projection.md)）。
+本套件的設計身份是 **異步流（async-first）**：解析經晚綁定流 / Promise（缺席 = pending；見 [09b-late-binding.md](./09b-late-binding.md)）；同步動詞僅為熱快照投影，身分為**二等**（見 §3.1.1）——不列入穩定契約；`0.1.x` 落地即 `@deprecated`，`0.2.0` 全面移除（D-114）。命名公約：異步一等無 `Async` 後缀；同步二等帶 `Sync` 後缀（見 [13-decisions.md](./13-decisions.md) §13.13）。DOM 投影與雙向綁定為非目標（見 [08-projection.md](./08-projection.md)）。
 
 > 服務型別的事實來源是 `ServiceToken<T>` / `ServiceRegistry`（見 [02b-tokens.md](./02b-tokens.md)）；本版不做跨運算子服務型別累積推導。決策見 [13-decisions.md](./13-decisions.md)。
 
@@ -191,7 +191,7 @@ subscribe$((s) => {
 ```ts
 export interface MountOptions {
     readonly token?: ServiceToken<string> | string        // keyed 身分（可序列化公開 token；字串形式以 defineToken 規則驗證，違規拋 TOKEN_INVALID）
-    readonly suspensionTtlMs?: number                    // 預設 50；0 = 立即銷毀；Infinity 僅當 retention:'pinned' 並存時生效，裸 Infinity 拋配置錯
+    readonly suspensionTtlMs?: number                    // 預設 50；0 = 立即銷毀；Infinity 僅當 retention:'pinned' 並存時生效，裸 Infinity 拋 configuration Error（非 DocumentContextError，見 02 §2.7 表下註）
     readonly retention?: 'default' | 'pinned'             // 預設 'default'；'pinned' 具名持有者擁有處置（見 05 §5.5）
     readonly observer?: boolean                          // 預設繼承應用級策略；逐 mount 覆寫，mount 贏（見 05 §5.6）
     readonly onConflict?: 'throw' | 'evict' | 'reset'    // 預設 'throw'；身分衝突策略（僅同宿主 swap 與 options.token vs data-context-key 矛盾；跨宿主 genuine dual-active 一律拋 KEYED_SESSION_CONFLICT，見 05 §5.5）

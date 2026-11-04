@@ -81,12 +81,12 @@ const blueprint = pipe(
 
 ## 6.3 水合優先級與數據流管線
 
-| 策略 | 決策 |
+| 策略 | 決策（階段 3「合併」：三源鍵**聯集**，**頂層淺合併**；缺源以 `{}` 計） |
 | :--- | :--- |
-| `storageFirst`（預設） | 儲存 > payload（SSR JSON） > 藍圖種子 |
-| `payloadFirst` | payload > 儲存 > 藍圖種子 |
-| `blueprintFirst` | 藍圖種子 > 儲存 > payload |
-| `merge` | 依序淺層合併（藍圖 → 儲存 → payload） |
+| `storageFirst`（預設） | 覆蓋順序：種子 → payload → **storage 勝** |
+| `payloadFirst` | 覆蓋順序：種子 → storage → **payload 勝** |
+| `blueprintFirst` | 覆蓋順序：storage → payload → **種子勝** |
+| `merge` | 覆蓋順序：種子 → storage → payload（與 `payloadFirst` 同序；三源皆參與） |
 
 > 註：v0.0.1 的 `domFirst` 與早期草案的 `projectionFirst` 均廢止——投影為非目標（見 [08-projection.md](./08-projection.md)）；「以 payload 為先」的新名為 `payloadFirst`。
 > 註：`onConflict:'reset'` 舊態替代「藍圖種子」槽位，其餘不變；HMR 保熱態請用 `blueprintFirst`（見 05 §5.5）。
@@ -98,12 +98,12 @@ const blueprint = pipe(
 
 1. 讀取：並行讀 storage 與 payload，各自容錯降級（storage 失敗視同無儲存；payload 讀取或解析失敗視同未提供，不中斷掛載）。
 2. 遷移：`migrate` 只吃 storage 原始 `d`，輸出替代 storage 側、優先級不變；失敗 → `INVALID_STORAGE_DATA` 加藍圖種子；單步、無目標版本、同步。
-3. 合併：按策略合併——`storageFirst` 取首個可用源；`payloadFirst` 同理；`blueprintFirst` 種子優先；`merge` 依序頂層淺合併（藍圖 → 儲存 → payload）。
-4. 種子回填：缺鍵回填藍圖 initial；三源全缺即藍圖類型違約（斷言「種子須完備」，不新增錯誤碼）。
+3. 合併：按上表覆蓋順序做頂層淺合併（實作見 `domain/usecases/hydrate.ts`）；**不得**將「首個可用整包來源」與「按鍵覆蓋」混用。
+4. 種子回填：合併後仍缺鍵以藍圖 `initial` 回填；三源皆空且種子不完備即藍圖類型違約（斷言「種子須完備」，不新增錯誤碼）。
 
 - **嵌套對象規則**：頂層淺合併（nested 整替換），與 `update` 同深（見 04 §4.5，互為指針）。嵌套偏好類需用戶展平頂層鍵或用 `migrate` 預整形。
 - **來源獨有鍵**：三源鍵並集；缺鍵為無意見，不刪不置 `undefined`。storage 殘留鍵可「復活」已刪藍圖鍵，須由 `migrate` 顯式清理。
-- **部分 payload 空洞下探**：payload 缺鍵下探 storage 再下探種子（payload 缺 → storage → 種子）。
+- **Per-key 勝出**：單鍵由覆蓋順序決定；不存在「payload 整包缺席才讀 storage」——payload 為 `{}` 時 storage 鍵仍可能勝出（`storageFirst`）。
 - **水合中外部更新**：水合完成前到達的外部更新排隊，視同水合後的一次遠端寫走 LWW 與 `conflict` 管線（見 §6.5），不參與水合優先級比較。
 
 ## 6.4 版本與遷移
@@ -121,13 +121,13 @@ const blueprint = pipe(
 `crossTab: true`（預設）時，`infrastructure/storage/sync.ts` 提供：
 
 - 監聽 `storage` 事件（同源其他分頁的寫入，沿用信封）。
-- 可選 `BroadcastChannel` 作為更即時通道，消息信封為 `{ kind, key, v, d, ts, tabId, seq }`；「last」為 `(ts, seq, tabId)` 全序。
+- 可選 `BroadcastChannel` 作為更即時通道，消息信封為 `{ kind, key, v, d, ts, tabId, seq }`（`ts` / `seq` / `tabId` 供 P1 公平全序與除錯；**v0.1.0 入站以到達序 + flush-then-apply**，見 D-116）。
 - 可選 W3C Web Locks API 協調並發寫入：鎖名 `dc-storage:<key>`，`mode:'exclusive'`，僅包 read-modify-write 的寫節（flush 與外部應用各持鎖）；無 Locks 降級為無鎖（全序仍保證收斂）。key 宜 URL-safe 轉義。
 
 外部變更經 `StoragePort.observe$` 流入，觸發 `update`，**不** 回流自身寫入。
 
-- **自回聲規則**：`(tabId, sessionId)` 同者丟棄為真自回聲；同 tab 兄弟 session 視為合法外部變更祝福接收。同 key 多 session 即多寫者（互相覆蓋符合 LWW）。
-- **寫收排序**：應用外部快照前先 flush 本地待刷批次，再按 `(ts, seq, tabId)` 全序公平比較（flush-then-compare）；`conflict` 鉤子在比較點調用，返回值經正常 `update` 加批次寫回。非同步後端 best-effort flush 殘餘窗口誠實注記（見寫入節奏）。
+- **自回聲規則**：本端已發 `(tabId, seq)` 在 `ownSequences` 內者丟棄；**同 tab 其他 seq 視為合法外部變更**（多 Session 同 key 即多寫者，LWW 整快照）。
+- **寫收排序（P0）**：應用外部快照前先 flush 本地待刷批次（flush-then-apply），再套用入站快照；`conflict` 鉤子在套用點調用。`compareEnvelopes`（`(ts, seq, tabId)` 全序）已實作供測試與 P1 公平比較，**v0.1.0 接收路徑不以此排序**（D-116）。
 - **入站冪等**：雙重去重——`(tabId, seq)` 已見即丟（per-key 有界集，如最近 128）；storage 值字符串整體（含 `{ v, d }`）字節相等即丟。
 - **衝突策略**：預設 last-write-wins（LWW）：外部變更以整快照替換本地狀態；不做 rebase（CRDT 需求請自訂 `StoragePort`）。`conflict?: 'lww' | 'ignore-external' | ((local, remote) => S)` 預設 `'lww'`。
 - **寫入節奏**：狀態變更後以微任務批次合併寫入；`dispose` 時對同步 adapter 立即 flush（保證最後一致性）；非同步 adapter 為 best-effort（文件明示）。

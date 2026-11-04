@@ -10,9 +10,9 @@ Function-first IoC and reactive state anchored to **physical DOM hosts**. v0.1.0
 - **Zero-leak lifecycle** — sessions, subscriptions, and observers align with host connection; keyed resuscitation with TTL.
 - **W3C Context Protocol** — cross-bundle DI via `context-request` and normative mount/dispose events.
 - **SSR-safe core** — domain loads in Node; default root entry wires DOM adapters lazily.
-- **No built-in DOM projection** — map state to the DOM with `subscribe$` / `select$` + your own DOM code ([recipes](./docs/next-version/08-projection.md)).
+- **No built-in DOM projection** — map state to the DOM with `subscribe$` / `select$` + your own DOM code ([recipes](./docs/next-version-deprecated/08-projection.md)).
 
-Design specs: [`docs/next-version`](./docs/next-version/README.md). Migration from v0.0.1: [`docs/next-version/11-migration.md`](./docs/next-version/11-migration.md).
+Design specs (deprecated): [`docs/next-version-deprecated`](./docs/next-version-deprecated/README.md). Migration from v0.0.1: [`docs/next-version-deprecated/11-migration.md`](./docs/next-version-deprecated/11-migration.md).
 
 ---
 

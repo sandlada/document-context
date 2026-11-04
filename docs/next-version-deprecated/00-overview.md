@@ -85,7 +85,7 @@ flowchart LR
 - **不做 DOM 投影 / 雙向綁定**（無 `project` / `twoWay` / `collectAttributes`）：狀態 → DOM 由使用者以 `subscribe$` / `select$` + DOM API 自行組合；DOM → 狀態由使用者以 `addEventListener` + `update` 自行組合（配方見 [08-projection.md](./08-projection.md)）。
 - 不內建 signals 橋接與裝飾器（P1）。
 - 不設模組全域可變 registry；身分與狀態不依賴全域狀態。
-- 不做跨標籤衝突合併（採 LWW；`last` 定義為 `(ts, seq, tabId)` 全序，詳見 [06-storage.md](./06-storage.md) §6.3；CRDT / rebase 由自訂 `StoragePort` 承擔）。
+- 不做跨標籤衝突合併（採 LWW 整快照；v0.1.0 入站為 flush-then-apply + 到達序，信封 `(ts, seq, tabId)` 公平全序列 P1，詳見 [06-storage.md](./06-storage.md) §6.5 與 D-116；CRDT / rebase 由自訂 `StoragePort` 承擔）。
 
 ## 0.7 決策登錄
 

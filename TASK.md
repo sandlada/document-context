@@ -1,6 +1,6 @@
 # Project Tasks & Execution Roadmap (TASK.md) — v0.1.0
 
-Execution tracking for the layered `@sandlada/document-context` package. Specifications live in [`docs/next-version/`](./docs/next-version/README.md) (single source of truth). Historical v0.0.1 tasks: [`docs/archive/v0.0.1/TASK.md`](./docs/archive/v0.0.1/TASK.md).
+Execution tracking for the layered `@sandlada/document-context` package. Deprecated design corpus: [`docs/next-version-deprecated/`](./docs/next-version-deprecated/README.md) (not authoritative over implementation). Historical v0.0.1 tasks: [`docs/archive/v0.0.1/TASK.md`](./docs/archive/v0.0.1/TASK.md).
 
 ---
 
@@ -26,7 +26,7 @@ Execution tracking for the layered `@sandlada/document-context` package. Specifi
 - [x] CI builds and verifies `packages/document-context/build/*` subpaths.
 - [x] Archive v0.0.1 `DESIGN.md` and top-level docs under `docs/archive/v0.0.1/`.
 - [x] Root README and CHANGELOG for v0.1.0; rewrite `AGENTS.md` for layered layout.
-- [ ] Optional CI: `publint`, `@arethetypes/wrong`, `size-limit` (see [14-packaging-release.md](./docs/next-version/14-packaging-release.md)).
+- [ ] Optional CI: `publint`, `@arethetypes/wrong`, `size-limit` (see [14-packaging-release.md](./docs/next-version-deprecated/14-packaging-release.md)).
 - [ ] Playwright e2e for Closed Shadow DOM (happy-dom e2e tests exist today).
 - [ ] Starlight site refresh for v0.1.0 (P1; legacy `0.0.1` site remains).
 
@@ -42,4 +42,4 @@ pnpm run typecheck
 pnpm run demo:dev
 ```
 
-Tests and sources: `packages/document-context/src/**` with `*.unit-test.ts`, `*.integration-test.ts`, `*.e2e-test.ts` (see [`docs/next-version/10-testing.md`](./docs/next-version/10-testing.md)).
+Tests and sources: `packages/document-context/src/**` with `*.unit-test.ts`, `*.integration-test.ts`, `*.e2e-test.ts` (see [`docs/next-version-deprecated/10-testing.md`](./docs/next-version-deprecated/10-testing.md)).

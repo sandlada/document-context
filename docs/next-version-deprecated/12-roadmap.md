@@ -78,7 +78,7 @@ npx size-limit        # 體積預算（見 14-packaging-release.md §14.5）
 3. domain 於 node 環境可載入與執行。
 4. 公共 API 全部柯里化 data-last。
 5. 品質閘門全綠（§12.3 全部）。
-6. `docs/next-version/` 完成並與實作一致；[13-decisions.md](./13-decisions.md) 在 P0 範圍內無未決項；每個 03 §3.1 row 有簽名 + 梯隊 + 範例 + 錯誤碼。
+6. `docs/next-version-deprecated/` 完成並與實作一致；[13-decisions.md](./13-decisions.md) 在 P0 範圍內無未決項；每個 03 §3.1 row 有簽名 + 梯隊 + 範例 + 錯誤碼。
 7. 晚綁定順序無關性（inject×mount 全排列、detached→連線、re-parent、keyed 復甦喚醒）與取消語意（signal / 多通道冪等 / 目標死亡 / mount 清理）測試全綠。
 8. 同步動詞僅為投影：parity（同步 / 流一致性）測試與移除演練（stub 同步動詞後核心全綠）通過。演練證明核心不依賴同步面；下游 SSR 渲染與同步工廠替代需 D-71 門控另行確立（見 D-112）。
 

@@ -428,8 +428,13 @@ const trackAsync = (
  *
  * @param ctx Application context.
  * @param facade Session facade to tear down.
+ * @param disposedDetails Optional payload for the final `lifecycle$` `disposed` event.
  */
-const disposeEntry = (ctx: ApplicationContext, facade: Session): void => {
+const disposeEntry = (
+    ctx: ApplicationContext,
+    facade: Session,
+    disposedDetails?: { readonly evicted?: 'suspended-cap' },
+): void => {
     const entry = readEntry<Record<PropertyKey, unknown>>(facade)
     if (entry === undefined || entry.disposed) {
         return
@@ -514,7 +519,11 @@ const disposeEntry = (ctx: ApplicationContext, facade: Session): void => {
             // Identity write-back is best-effort on teardown.
         }
     }
-    entry.lifecycle.next({ type: 'disposed' })
+    entry.lifecycle.next(
+        disposedDetails === undefined
+            ? { type: 'disposed' }
+            : { type: 'disposed', details: disposedDetails },
+    )
     entry.lifecycle.complete()
     if (entry.pendingAsync === 0) {
         entry.channel.complete()
@@ -859,7 +868,7 @@ const armSuspended = (ctx: ApplicationContext, entry: SessionEntry<Record<Proper
         removeFromSuspended(ctx, oldest.facade as Session)
         const victim = readEntry<Record<PropertyKey, unknown>>(oldest.facade as Session)
         if (victim !== undefined) {
-            disposeEntry(ctx, victim.facade)
+            disposeEntry(ctx, victim.facade, { evicted: 'suspended-cap' })
         }
     }
 }
@@ -1296,7 +1305,8 @@ const resuscitateEntry = async <S extends Record<PropertyKey, unknown>>(
         record.status = transition(record.status, 'disconnect', record.kind)
     }
     record.status = transition(record.status, 'resuscitate', record.kind)
-    if (record.onMountSkipped && !targetIsNullHost) {
+    const deferredMount = record.onMountSkipped && !targetIsNullHost
+    if (deferredMount) {
         record.onMountSkipped = false
         await runOnMount(ctx, entry as unknown as SessionEntry<Record<PropertyKey, unknown>>)
     }
@@ -1307,7 +1317,11 @@ const resuscitateEntry = async <S extends Record<PropertyKey, unknown>>(
     if (entry.token !== null && !entry.isNullHost && !targetIsNullHost) {
         ctx.ports.host.tokens.write(newNative, entry.token)
     }
-    entry.lifecycle.next({ type: 'resuscitated' })
+    entry.lifecycle.next(
+        deferredMount
+            ? { type: 'resuscitated', details: { setup: 'deferred-mount' } }
+            : { type: 'resuscitated' },
+    )
     return entry.facade as unknown as Session
 }
 
@@ -1995,7 +2009,8 @@ const resuscitateSync = (
         entry.record.status = transition(entry.record.status, 'disconnect', entry.record.kind)
     }
     entry.record.status = transition(entry.record.status, 'resuscitate', entry.record.kind)
-    if (entry.record.onMountSkipped && !targetIsNullHost) {
+    const deferredMount = entry.record.onMountSkipped && !targetIsNullHost
+    if (deferredMount) {
         entry.record.onMountSkipped = false
         for (const hook of entry.blueprint.hooks.filter((candidate) => candidate.event === 'mount')) {
             let produced: unknown
@@ -2025,7 +2040,11 @@ const resuscitateSync = (
     if (entry.token !== null && !entry.isNullHost && !targetIsNullHost) {
         ctx.ports.host.tokens.write(newNative, entry.token)
     }
-    entry.lifecycle.next({ type: 'resuscitated' })
+    entry.lifecycle.next(
+        deferredMount
+            ? { type: 'resuscitated', details: { setup: 'deferred-mount' } }
+            : { type: 'resuscitated' },
+    )
     ctx.settled$.next()
     return entry.facade
 }

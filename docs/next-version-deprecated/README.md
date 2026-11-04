@@ -1,4 +1,6 @@
-# `@sandlada/document-context` v0.1.0 — 下一世代宏觀藍圖
+# `@sandlada/document-context` v0.1.0 — 下一世代宏觀藍圖（已棄用）
+
+> **狀態**：本目錄已更名為 `docs/next-version-deprecated/`，僅作歷史設計參考；**規範以 `packages/document-context` 原始碼與測試為準**。請勿再當作 canonical spec 維護。
 
 本目錄是 `@sandlada/document-context` 下一世代（`0.1.0`）的宏觀設計藍圖。
 這是一次 **greenfield 全刪重寫**：舊 `src/` 與舊 `DESIGN.md` 僅作設計素材，不構成任何相容約束。
@@ -22,7 +24,7 @@
 | 10 | [testing.md](./10-testing.md) | TDD、分層測試環境、埠契約測試套件 |
 | 11 | [migration.md](./11-migration.md) | 自 v0.0.1 的破壞性變更與遷移指引 |
 | 12 | [roadmap.md](./12-roadmap.md) | v0.1.0 範圍與里程碑 |
-| 13 | [13-decisions.md](./13-decisions.md) | 決策登錄（單一事實來源）與勘誤 |
+| 13 | [13-decisions.md](./13-decisions.md) | 決策登錄（單一事實來源）與勘誤；現行政策速查見 [13-decisions-current-policy.md](./13-decisions-current-policy.md) |
 | 14 | [14-packaging-release.md](./14-packaging-release.md) | 打包、相容性、CI 與發佈 |
 | 15 | [15-glossary.md](./15-glossary.md) | 術語表 |
 

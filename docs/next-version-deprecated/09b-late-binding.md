@@ -12,7 +12,7 @@ DOM 的客觀事實：
 - 模組腳本（`type="module"`）並行下載，執行順序不保證；
 - 元素可能先建立、後連線。
 
-因此「消費者在 Provider 掛載之前發起解析」是常態而非例外。同時：**同步函式無法返回尚未存在的 Provider 值**——晚綁定必然以 async-first 的流 / Promise 為主入口；同步 API 收縮為「已就緒範圍」的熱快照投影（**二等**，不列入穩定契約、可於任何 minor 移除；見 [03-application-api.md](./03-application-api.md) §3.1.1）。
+因此「消費者在 Provider 掛載之前發起解析」是常態而非例外。同時：**同步函式無法返回尚未存在的 Provider 值**——晚綁定必然以 async-first 的流 / Promise 為主入口；同步 API 收縮為「已就緒範圍」的熱快照投影（**二等**，不列入穩定契約；`0.1.x` 全程 `@deprecated`，`0.2.0` 移除，見 [03-application-api.md](./03-application-api.md) §3.1.1 與 D-114）。
 
 對應場景（全部必須正確；「負責機制」列標明每排的主人，兩路共用同一微任務批次，排序只定義一次）：
 

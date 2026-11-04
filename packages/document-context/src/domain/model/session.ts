@@ -62,9 +62,9 @@ export interface Session<S extends Record<PropertyKey, unknown> = Record<Propert
 export type LifecycleEvent =
     | { readonly type: 'mounted' }
     | { readonly type: 'suspended' }
-    | { readonly type: 'resuscitated' }
+    | { readonly type: 'resuscitated', readonly details?: { readonly setup?: 'deferred-mount' } }
     | { readonly type: 'adopted', readonly owner: unknown }
-    | { readonly type: 'disposed' }
+    | { readonly type: 'disposed', readonly details?: { readonly evicted?: 'suspended-cap' } }
 
 /**
  * Minimal pure store primitive behind `state$`. The store owns its snapshot,
