@@ -8,22 +8,22 @@ build on purpose: `../tsconfig.json` scopes itself to `../src`, so nothing here 
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the dev server. The narrative pages sync through the Astro lifecycle. |
-| `npm run build` | Build to `dist/`. Runs the narrative sync, TypeDoc generation, link validation and `verify:seo`. |
-| `npm run check` | `astro check` — type-checks `.astro` files and page frontmatter. |
-| `npm run check:snippets` | Type-checks the examples in `src/snippets/` against `../src`. Requires no library build. |
-| `npm run verify` | Full local verification: `check:snippets`, then `check`, then `build`. |
-| `npm run verify:seo` | Checks the built pages for the search-metadata invariants (titles, descriptions, canonicals, JSON-LD, indexability, sitemap). Also runs as part of `npm run build`; can re-check an existing `dist/` on its own. |
-| `npm run sync` | Copies the narrative pages into the content tree. Rarely needed directly — every Astro entry point (`dev`/`build`/`check`/`sync`) runs it automatically. Accepts `--force` to adopt hand-written files. |
-| `npm run generate:icons` | Renders `public/og.png` and `public/apple-touch-icon.png` from their SVG sources. Only needed after editing those sources. |
-| `npm run version:new -- <slug> [label]` | Archives the current documentation as a new version. |
+| `pnpm run dev` | Start the dev server. The narrative pages sync through the Astro lifecycle. |
+| `pnpm run build` | Build to `dist/`. Runs the narrative sync, TypeDoc generation, link validation and `verify:seo`. |
+| `pnpm run check` | `astro check` — type-checks `.astro` files and page frontmatter. |
+| `pnpm run check:snippets` | Type-checks the examples in `src/snippets/` against `../src`. Requires no library build. |
+| `pnpm run verify` | Full local verification: `check:snippets`, then `check`, then `build`. |
+| `pnpm run verify:seo` | Checks the built pages for the search-metadata invariants (titles, descriptions, canonicals, JSON-LD, indexability, sitemap). Also runs as part of `pnpm run build`; can re-check an existing `dist/` on its own. |
+| `pnpm run sync` | Copies the narrative pages into the content tree. Rarely needed directly — every Astro entry point (`dev`/`build`/`check`/`sync`) runs it automatically. Accepts `--force` to adopt hand-written files. |
+| `pnpm run generate:icons` | Renders `public/og.png` and `public/apple-touch-icon.png` from their SVG sources. Only needed after editing those sources. |
+| `pnpm run version:new -- <slug> [label]` | Archives the current documentation as a new version. |
 
 ### Call order
 
 Scripts form a chain — run them in this order, or let the aggregate commands do it:
 
 ```text
-npm run verify
+pnpm run verify
  └─ 1. check:snippets   (fastest: type-checks src/snippets/ against ../src)
  └─ 2. check            (astro check: .astro files and page frontmatter)
  └─ 3. build
@@ -43,7 +43,7 @@ Notes:
   server is already running.
 - `generate:icons` is independent of the chain — run it only after editing
   `assets/og.svg` or `public/favicon.svg`.
-- `version:new` runs a full `build` internally, so run `npm run verify` first and
+- `version:new` runs a full `build` internally, so run `pnpm run verify` first and
   keep the working tree clean before archiving.
 
 ## How the content is produced
@@ -93,11 +93,11 @@ fails when the two disagree.
   Repository links are resolved against the source file: sibling specs and
   narrative guides stay internal, everything else points at GitHub. The
   implementation lives in `lib/sync-content.mjs` (import-safe, also runnable via
-  `npm run sync`); generated pages carry a marker, unchanged files are left
+  `pnpm run sync`); generated pages carry a marker, unchanged files are left
   untouched, and stale pages owned by the sync are pruned.
 - **Hand-written pages** — `src/content/docs/*.md` are edited directly. A synced
   target that exists without the generated marker is never overwritten (the sync
-  fails instead) unless `npm run sync -- --force` is passed.
+  fails instead) unless `pnpm run sync -- --force` is passed.
 - **API search metadata** — `plugins/seo-api-pages.mjs` runs after `starlight-typedoc` in the
   Starlight `plugins` array and replaces the `title` and `description` frontmatter of every
   generated API page with the curated values from `lib/site.mjs`. The generated pages only
@@ -129,8 +129,8 @@ Archived versions live in `src/content/docs/<slug>/` and are committed. `version
 and drives the version selector; the newest entry is the most recent release.
 
 ```bash
-npm run version:new -- 0.20260901        # slug only, label defaults to v0.20260901
-npm run version:new -- 0.20260901 v0.20260901
+pnpm run version:new -- 0.20260901        # slug only, label defaults to v0.20260901
+pnpm run version:new -- 0.20260901 v0.20260901
 git add src/content/docs/0.20260901 src/content/versions src/versions.json
 ```
 
@@ -168,9 +168,9 @@ Every page needs metadata that page frontmatter cannot provide, so it is split a
   API pages; see "How the content is produced".
 
 `public/robots.txt` points crawlers at `sitemap-index.xml`. `scripts/verify-seo.mjs` runs as part
-of `npm run build` and fails when a page loses its title, description, canonical, social image,
+of `pnpm run build` and fails when a page loses its title, description, canonical, social image,
 JSON-LD, robots policy, or when the sitemap and the built pages disagree. Editing `assets/og.svg`
-or `public/favicon.svg` requires `npm run generate:icons` so the committed PNGs match.
+or `public/favicon.svg` requires `pnpm run generate:icons` so the committed PNGs match.
 
 ## Deployment
 
@@ -184,17 +184,16 @@ the dashboard offers when a repository is connected; there is no deployment job 
 | --- | --- |
 | Project name | `document-context` (must match `name` in `wrangler.jsonc`) |
 | Production branch | `main` |
-| Build command | `cd site && npm ci && npm run verify` |
-| Deploy command | `cd site && npx wrangler deploy` |
+| Build command | `pnpm install --frozen-lockfile && pnpm --filter @sandlada/document-context-docs verify` |
+| Deploy command | `pnpm --filter @sandlada/document-context-docs exec wrangler deploy` |
 | Environment variable | `NODE_VERSION=26` (Astro requires Node >= 22.12) |
 | Custom domain | `document-context.sandlada.com` |
 
-The `cd site` prefix in both commands keeps them independent of any root-directory setting. If the
-project is instead configured with `site` as its root directory, drop the prefix.
-`npm run verify` already ends with `astro build` plus `verify:seo`, so no trailing `npm run build`
-is needed. Do not drop `npm ci` from the build command: Cloudflare's automatic
-`npm clean-install` runs at the repository root and does not install `site/` dependencies —
-without it `check:snippets` fails on `astro/tsconfigs/strict not found`.
+The repository root is the pnpm workspace; install once at the root so `site/` dependencies are linked.
+`pnpm run verify` already ends with `astro build` plus `verify:seo`, so no trailing `pnpm run build`
+is needed. Do not skip the explicit `pnpm install --frozen-lockfile` in the build command: Cloudflare's
+automatic install hook may not match the workspace layout —
+without a root install `check:snippets` fails on `astro/tsconfigs/strict not found`.
 
 `npx wrangler deploy --dry-run --config site/wrangler.jsonc` validates the configuration locally
 without authenticating, including that the assets directory resolves.
@@ -208,7 +207,7 @@ even though the build runs inside `site/`.
 Workers Builds rebuilds on every change in the repository; unlike Pages it has no build watch
 paths, so unrelated commits also trigger a build.
 
-Do not add a version to `versions.json` without running `npm run version:new`, because the next
+Do not add a version to `versions.json` without running `pnpm run version:new`, because the next
 build would then create the archive itself and the deployed site would describe a version that is
 not in the repository. The `Verify the build left the working tree clean` step in `docs.yml` fails
 in that situation.

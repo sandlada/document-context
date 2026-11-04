@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - next-version-line/**
   pull_request:
     branches:
       - main
@@ -23,23 +24,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Run root typecheck
-        run: npm run typecheck
+      - name: Run typecheck
+        run: pnpm run typecheck
 
       - name: Run build typecheck
-        run: npm run typecheck:build
+        run: pnpm run typecheck:build
 
       - name: Run test typecheck
-        run: npm run typecheck:test
+        run: pnpm run typecheck:test
 
   test:
     name: Test
@@ -48,17 +54,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Run unit & integration tests
-        run: npm test
+      - name: Run unit, integration, and e2e tests
+        run: pnpm test
 
   build:
     name: Build
@@ -67,26 +78,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run package build
-        run: npm run build
+        run: pnpm run build
 
       - name: Verify build artifacts
         run: |
-          test -d build
-          test -f build/index.js
-          test -f build/index.d.ts
-          test -f build/core/index.js
-          test -f build/core/index.d.ts
-          test -f build/bridge/index.js
-          test -f build/storage/index.js
-          test -f build/dom/index.js
-          test -f build/signals/index.js
+          PKG=packages/document-context
+          test -d $PKG/build
+          test -f $PKG/build/index.js
+          test -f $PKG/build/index.d.ts
+          test -f $PKG/build/domain/index.js
+          test -f $PKG/build/application/index.js
+          test -f $PKG/build/infrastructure/dom/index.js
+          test -f $PKG/build/infrastructure/storage/index.js
+          test -f $PKG/build/infrastructure/ssr/index.js

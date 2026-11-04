@@ -1,12 +1,14 @@
 # build output
 dist/
 build/
+packages/document-context/coverage/
 
 # generated types
 .astro/
 
 # dependencies
 node_modules/
+package-lock.json
 
 # logs
 npm-debug.log*

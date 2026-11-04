@@ -1,8 +1,8 @@
 {
     "name": "document-context-workspace",
     "private": true,
-    "version": "0.0.1-20261008.a",
-    "description": "A function-first, DOM-anchored IoC container and reactive state management library for modern browsers, Astro, Web Components, and micro-frontends.",
+    "version": "0.1.0-alpha.0",
+    "description": "Monorepo for @sandlada/document-context (v0.1 layered architecture).",
     "author": "Kai Orion",
     "license": "MIT",
     "repository": {
@@ -10,96 +10,19 @@
         "url": "git+https://github.com/sandlada/document-context.git"
     },
     "homepage": "https://github.com/sandlada/document-context#readme",
-    "keywords": [
-        "html",
-        "document-context",
-        "ioc",
-        "inversion-of-control",
-        "dependency-injection",
-        "state-management",
-        "reactive",
-        "signals",
-        "tc39-signals",
-        "w3c-context-protocol",
-        "context-protocol",
-        "web-components",
-        "custom-elements",
-        "astro",
-        "islands-architecture",
-        "micro-frontends",
-        "bidirectional-bridge",
-        "dom-state",
-        "functional",
-        "curried"
-    ],
     "type": "module",
-    "workspaces": [
-        "packages/*"
-    ],
-    "main": "./build/index.js",
-    "types": "./build/index.d.ts",
-    "sideEffects": false,
-    "files": [
-        "build"
-    ],
-    "exports": {
-        ".": {
-            "types": "./build/index.d.ts",
-            "import": "./build/index.js"
-        },
-        "./core": {
-            "types": "./build/core/index.d.ts",
-            "import": "./build/core/index.js"
-        },
-        "./bridge": {
-            "types": "./build/bridge/index.d.ts",
-            "import": "./build/bridge/index.js"
-        },
-        "./storage": {
-            "types": "./build/storage/index.d.ts",
-            "import": "./build/storage/index.js"
-        },
-        "./dom": {
-            "types": "./build/dom/index.d.ts",
-            "import": "./build/dom/index.js"
-        },
-        "./signals": {
-            "types": "./build/signals/index.d.ts",
-            "import": "./build/signals/index.js"
-        },
-        "./package.json": "./package.json"
-    },
+    "packageManager": "pnpm@12.14.0",
     "scripts": {
-        "build": "tsdown",
-        "build:domain": "npm run build --workspace=@sandlada/document-context",
-        "test": "vitest run",
-        "test:domain": "npm run test --workspace=@sandlada/document-context",
-        "test:watch": "vitest",
-        "typecheck": "tsc --noEmit",
-        "typecheck:domain": "npm run typecheck --workspace=@sandlada/document-context",
-        "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
-        "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
-    },
-    "dependencies": {},
-    "devDependencies": {
-        "happy-dom": "^20.11.6",
-        "rxjs": "^7.8.2",
-        "tsdown": "^0.22.14",
-        "typescript": "^7.0.2",
-        "vitest": "^4.1.11"
-    },
-    "peerDependencies": {
-        "rxjs": ">=7.0.0"
-    },
-    "peerDependenciesMeta": {
-        "rxjs": {
-            "optional": true
-        }
+        "build": "pnpm --filter @sandlada/document-context build",
+        "test": "pnpm --filter @sandlada/document-context test",
+        "test:watch": "pnpm --filter @sandlada/document-context test:watch",
+        "typecheck": "pnpm --filter @sandlada/document-context typecheck",
+        "typecheck:build": "pnpm --filter @sandlada/document-context typecheck:build",
+        "typecheck:test": "pnpm --filter @sandlada/document-context typecheck:test",
+        "demo:dev": "pnpm --filter @sandlada/demo dev",
+        "demo:build": "pnpm --filter @sandlada/demo build"
     },
     "engines": {
         "node": ">=22.12.0"
-    },
-    "publishConfig": {
-        "access": "public"
     }
 }

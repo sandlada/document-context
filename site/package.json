@@ -6,12 +6,12 @@
     "scripts": {
         "sync": "node scripts/sync-content.mjs",
         "dev": "astro dev",
-        "build": "astro build && npm run verify:seo",
+        "build": "astro build && pnpm run verify:seo",
         "preview": "astro preview",
         "check": "astro check",
         "check:snippets": "tsc --project tsconfig.snippets.json",
         "verify:seo": "node scripts/verify-seo.mjs",
-        "verify": "npm run check:snippets && npm run check && npm run build",
+        "verify": "pnpm run check:snippets && pnpm run check && pnpm run build",
         "generate:icons": "node scripts/generate-icons.mjs",
         "version:new": "node scripts/new-version.mjs"
     },

@@ -4,383 +4,99 @@
 ![GitHub License](https://img.shields.io/github/license/sandlada/document-context?label=License&labelColor=%23223625&color=%23a0fab0)
 [![coverage](https://img.shields.io/badge/coverage-95.0%25-a0fab0?labelColor=223625&label=coverage)](./packages/document-context/coverage/index.html)
 
-A modern, function-first Inversion of Control (IoC) container and reactive state management library anchored directly to **`HTMLElement` and physical DOM nodes**.
+Function-first IoC and reactive state anchored to **physical DOM hosts**. v0.1.0 uses a **layered** architecture (`domain` / `application` / `infrastructure`), **RxJS-first** streams, and **late-binding** dependency resolution (`inject` and `mount` order does not matter).
 
-- **Physical DOM as Scope Hierarchy**: DOM nesting maps directly to IoC container scope hierarchies without virtual container trees.
-- **Zero-Leak Lifecycle Co-location**: Automatic garbage collection and subscription cleanup tied to physical DOM attachment.
-- **Atomic Bidirectional Bridge**: Synchronize JS reactive state and DOM properties (`dataset.*`, `style.*`, `aria-*`, `value`) with loop guards.
-- **Framework-Agnostic Lingua Franca**: Built on native W3C Context Protocol (`ContextRequestEvent`) and Custom Events, seamlessly bridging Astro, Islands, Web Components, and mixed frameworks.
-- **Pure FP Two-Phase Architecture**: Pure lazy blueprint declaration in Phase 1 + physical DOM mount execution in Phase 2.
+- **Physical DOM as scope hierarchy** — resolve along the ancestor chain; no virtual scope trees.
+- **Zero-leak lifecycle** — sessions, subscriptions, and observers align with host connection; keyed resuscitation with TTL.
+- **W3C Context Protocol** — cross-bundle DI via `context-request` and normative mount/dispose events.
+- **SSR-safe core** — domain loads in Node; default root entry wires DOM adapters lazily.
+- **No built-in DOM projection** — map state to the DOM with `subscribe$` / `select$` + your own DOM code ([recipes](./docs/next-version/08-projection.md)).
+
+Design specs: [`docs/next-version`](./docs/next-version/README.md). Migration from v0.0.1: [`docs/next-version/11-migration.md`](./docs/next-version/11-migration.md).
 
 ---
 
 ## Installation
 
 ```bash
-npm install @sandlada/document-context
+npm install @sandlada/document-context rxjs
 ```
+
+RxJS is a **required** peer dependency (`^7.8.0 || ^8.0.0`).
 
 ---
 
-## Usage (Astro Multi-Component Inline Scripts)
+## Quick start
 
-In Astro or Islands architecture, independent `<script is:inline>` blocks bundled across different components can share state and services seamlessly through the physical DOM tree without sharing JavaScript heap memory references.
-
-### 1. Root Context Definition (`Layout.astro`)
-
-Define the pure blueprint and mount it to the root document element with persistent storage and DOM property synchronization:
-
-```html
-<script is:inline type="module">
-    import { createContext, pipe, withBridge, withStorage, mount } from '@sandlada/document-context'
-
-    const themeBlueprint = pipe(
-        createContext({ isDark: false }),
-        withBridge({
-            properties: {
-                isDark: 'dataset.themeDark'
-            }
-        }),
-        withStorage({
-            adapter: 'localStorage',
-            key: 'app-theme',
-            hydrationStrategy: 'storageFirst'
-        })
-    )
-
-    // Mount to document root element
-    window.__themeSession = mount(themeBlueprint)(document.documentElement)
-</script>
-```
-
-### 2. State Mutator Component (`ThemeToggle.astro`)
-
-An independent toggle button component modifies state using the curried `update` verb:
-
-```html
-<script is:inline type="module">
-    import { update } from '@sandlada/document-context'
-
-    const btn = document.getElementById('theme-toggle-btn')
-    btn?.addEventListener('click', () => {
-        const toggle = update((s) => ({ isDark: !s.isDark }))
-        toggle(window.__themeSession)
-    })
-</script>
-```
-
-### 3. Reactive Consumer Component (`ThemeDisplay.astro`)
-
-Another independent consumer component subscribes to reactive state changes or reads snapshots via `select` / `subscribe`:
-
-```html
-<script is:inline type="module">
-    import { select, subscribe } from '@sandlada/document-context'
-
-    const statusEl = document.getElementById('theme-status-text')
-    const session = window.__themeSession
-
-    // 1. Initial snapshot read
-    const isDark = select((s) => s.isDark)(session)
-    if (statusEl) statusEl.textContent = isDark ? '🌙 Dark' : '☀️ Light'
-
-    // 2. Reactive subscription
-    subscribe((state) => {
-        if (statusEl) {
-            statusEl.textContent = state.isDark ? '🌙 Dark' : '☀️ Light'
-        }
-    })(session)
-</script>
-```
-
-### 4. Handling Boolean Attributes & Custom Toggles (`disabled`, `isDark`)
-
-HTML boolean attributes (such as `disabled`, `checked`, `readOnly`, and `hidden`) are considered `true` whenever the attribute exists on an element, regardless of its string value, and `false` only when the attribute is completely removed. `withBridge` handles this out of the box to avoid the invalid `disabled="false"` trap:
-
-- **Native HTML Boolean Attributes (`disabled`, `checked`, `readOnly`, `hidden`)**:
-  - `true` ➔ sets `element.disabled = true` and `element.setAttribute('disabled', '')`.
-  - `false` ➔ sets `element.disabled = false` and removes the attribute via `element.removeAttribute('disabled')`.
-- **Custom Boolean Attributes (e.g., `<html dark>`)**:
-  - Use `transform: (isDark) => (isDark ? '' : null)` to add `<el dark>` when true, or completely remove the attribute when false (returning `null` triggers `removeAttribute`).
-- **Semantic Dataset Theme (`data-theme="dark"`)**:
-  - Map boolean flags to CSS theme selectors via `dataset.theme`.
-
-```html
-<script is:inline type="module">
-    import { createContext, pipe, withBridge, mount } from '@sandlada/document-context'
-
-    const appBlueprint = pipe(
-        createContext({
-            isDisabled: false,
-            isDark: false
-        }),
-        withBridge({
-            properties: {
-                // 1. Native HTML boolean attribute: auto setAttribute('') / removeAttribute
-                isDisabled: 'disabled',
-
-                // 2. Custom boolean attribute: presence-based toggle (<html dark> vs <html>)
-                isDark: {
-                    target: 'dark',
-                    transform: (isDark) => (isDark ? '' : null),
-                    parse: (val) => val !== null
-                },
-
-                // 3. Or semantic dataset: data-theme="dark" vs data-theme="light"
-                /*
-                isDark: {
-                    target: 'dataset.theme',
-                    transform: (isDark) => (isDark ? 'dark' : 'light'),
-                    parse: (theme) => theme === 'dark'
-                }
-                */
-            }
-        })
-    )
-
-    const session = mount(appBlueprint)(document.documentElement)
-</script>
-```
-
----
-
-## API Reference
-
-`@sandlada/document-context` provides modular subpath exports for clean tree-shaking:
-
-- `@sandlada/document-context/core`
-- `@sandlada/document-context/bridge`
-- `@sandlada/document-context/storage`
-- `@sandlada/document-context/dom`
-- `@sandlada/document-context/signals`
-
-### 1. Core Module (`@sandlada/document-context/core`)
-
-#### `createContext(initialState)`
-
-Creates a pure immutable blueprint seed. Zero DOM access, zero I/O side effects.
+Mount when the host is **connected** (for example inside `connectedCallback`):
 
 ```ts
-const blueprint = createContext({ count: 0, theme: 'light' })
-```
+import {
+    createContext,
+    defineToken,
+    mount,
+    persist,
+    pipe,
+    provideSync,
+    subscribe$,
+    update,
+} from '@sandlada/document-context'
 
-#### `pipe(source, ...operators)`
+const logToken = defineToken<{ log: (message: string) => void }>('app:logger')
 
-Functional composition pipeline with progressive TypeScript generic type inference overloads.
-
-```ts
-const appBlueprint = pipe(
+const blueprint = pipe(
     createContext({ count: 0 }),
-    withProvider('logger', () => new ConsoleLogger()),
-    withBridge({ properties: { count: 'dataset.count' } })
+    provideSync(logToken, () => ({
+        log: (message: string) => console.log(message),
+    })),
+    persist({ storage: 'localStorage', key: 'counter', version: 1 }),
 )
-```
 
-#### `withProvider(token, factory, options?)`
+const host = document.getElementById('counter-box')!
+const session = await mount(blueprint)(host)
 
-Registers a synchronous service provider on the blueprint.
-
-- `lifecycle`: `'scoped'` (default) | `'singleton'` | `'transient'`
-- `multi`: `boolean` (default `false`)
-
-```ts
-withProvider('auth', (session) => new AuthService(session), { lifecycle: 'scoped' })
-```
-
-#### `withAsyncProvider(token, asyncFactory, options?)`
-
-Registers an asynchronous service provider with lazy execution and Promise coalescing.
-
-```ts
-withAsyncProvider('user', async (session) => {
-    const res = await fetch('/api/user', { signal: session.abortSignal })
-    return res.json()
-})
-```
-
-#### `withHook(event, handler)`
-
-Attaches declarative lifecycle hooks (`'mount'`, `'dispose'`, `'suspend'`, `'resuscitate'`, `'adopt'`).
-
-```ts
-withHook('mount', (session) => {
-    console.log('Mounted on', session.target)
-    return () => console.log('Cleanup on dispose')
-})
-```
-
-#### `mount(blueprint, options?)(element)`
-
-Execution boundary that activates the runtime `ISession` on a physical `HTMLElement`. Pass `{ key }` for keyed identity: the session is registered per document and automatically resuscitates (same identity, state, and scoped services) when the same key mounts on a replacement host — an HTMX swap or framework re-render. `suspensionTtlMs` controls the grace period (default 50ms) and `onConflict` (`'throw'` | `'evict'` | `'reset'`) the collision policy.
-
-```ts
-const session = mount(appBlueprint)(document.getElementById('app-root')!)
-const mountPanel = mount(appBlueprint, { key: 'cart-panel' })
-```
-
-#### `mountAsync(blueprint, options?)(element)`
-
-Asynchronous mount boundary awaiting eager storage hydration and async initialization. Accepts the same keyed options as `mount`.
-
-```ts
-const session = await mountAsync(appBlueprint)(document.getElementById('app-root')!)
-```
-
-#### `select(selector)(session)`
-
-Curried synchronous state snapshot reader.
-
-```ts
-const getCount = select((s: { count: number }) => s.count)
-const currentCount = getCount(session)
-```
-
-#### `update(updater)(session)`
-
-Curried state transition verb. Accepts a partial state object or an updater function `(prevState) => nextState`. Returns `boolean` (`false` if session is disposed).
-
-```ts
-const increment = update<{ count: number }>((s) => ({ count: s.count + 1 }))
-increment(session)
-```
-
-#### `subscribe(listener)(session)`
-
-Subscribes to reactive state transitions. Returns an unsubscribe teardown function.
-
-```ts
-const unsubscribe = subscribe((state) => {
-    console.log('New state:', state)
+subscribe$((state) => {
+    host.dataset.count = String(state.count)
 })(session)
+
+update((state) => ({ count: state.count + 1 }))(session)
 ```
 
-#### `dispose(session)`
+Package subpaths:
 
-Explicitly tears down the session, executing LIFO cleanups, poisoning the state store, and aborting `session.abortSignal`.
+| Import | Use |
+| :--- | :--- |
+| `@sandlada/document-context` | Default wired API (composition root) |
+| `@sandlada/document-context/application` | `createApplication` + verbs with custom ports |
+| `@sandlada/document-context/domain` | Ports, models, tokens |
+| `@sandlada/document-context/infrastructure/dom` | DOM adapters |
+| `@sandlada/document-context/infrastructure/storage` | Storage adapters |
+| `@sandlada/document-context/infrastructure/ssr` | SSR helpers |
 
-#### `readErrorStream(session)`
-
-Returns an RxJS `Observable<DocumentContextError>` streaming non-fatal errors (e.g., storage parsing failures, hook exceptions).
+Second-tier sync projections (`mountSync`, `injectSync`, `selectSync`, …) exist in `0.1.x` but are **deprecated**; prefer async `mount` / `inject` / `inject$`.
 
 ---
 
-### 2. Bridge Module (`@sandlada/document-context/bridge`)
+## Monorepo layout
 
-#### `withBridge(options)`
-
-Registers bidirectional property synchronization between JavaScript state and DOM element properties.
-
-- `properties`: Record of dot-paths (`dataset.*`, `style.*`, `style.--*`, `aria-*`, `value`, `checked`, `hidden`, `elementInternals.value`).
-- `events`: Array of DOM events triggering DOM-to-state sync (default: `['input', 'change']`).
-- `batch`: Microtask write batching (default: `true`).
-
-```ts
-withBridge({
-    properties: {
-        count: 'dataset.count',
-        theme: 'dataset.theme',
-        inputValue: {
-            target: 'value',
-            parse: Number
-        }
-    }
-})
-```
+| Path | Role |
+| :--- | :--- |
+| [`packages/document-context`](./packages/document-context) | Publishable library (`0.1.0-alpha.0`) |
+| [`packages/demo`](./packages/demo) | Vite multi-page demo |
+| [`site/`](./site) | Starlight docs (legacy `0.0.1` snapshot; site refresh is P1) |
+| [`docs/archive/v0.0.1`](./docs/archive/v0.0.1) | Historical v0.0.1 design docs |
 
 ---
 
-### 3. Storage Module (`@sandlada/document-context/storage`)
+## Development
 
-#### `withStorage(options)`
-
-Configures persistent state storage, schema migrations, and cross-tab synchronization.
-
-- `adapter`: `'localStorage'` | `'sessionStorage'` | custom adapter
-- `key`: Storage string key
-- `hydrationStrategy`: `'storageFirst'` (default) | `'domFirst'` | `'blueprintFirst'` | `'merge'`
-- `crossTabSync`: BroadcastChannel & Window storage sync (default: `true`)
-- `version`: Schema version number
-- `migrate`: Migration transition function `(oldData, oldVersion) => newData`
-
-```ts
-withStorage({
-    adapter: 'localStorage',
-    key: 'user-settings',
-    hydrationStrategy: 'storageFirst',
-    version: 2,
-    migrate: (oldData: any, oldVersion) => {
-        if (oldVersion === 1) return { ...oldData, newField: 'default' }
-        return oldData
-    }
-})
+```bash
+pnpm install
+pnpm test          # vitest in packages/document-context
+pnpm run build     # tsdown → packages/document-context/build
+pnpm run demo:dev  # demo at http://localhost:5173
 ```
 
----
+Node **≥ 22.12**.
 
-### 4. DOM & W3C Protocol Module (`@sandlada/document-context/dom`)
-
-#### `inject(token)(target)`
-
-Curried dependency injection verb. Dispatches standard `ContextRequestEvent` bubbling up the physical DOM tree across Shadow DOM boundaries.
-
-```ts
-// In a child Web Component or Element
-const auth = inject('auth')(this)
-```
-
-#### `injectAsync(token, options?)(target)`
-
-Asynchronous dependency injection with Promise Coalescing, DFS circular dependency detection, and multi-caller abort isolation.
-
-```ts
-const user = await injectAsync('user', { signal: abortController.signal })(childElement)
-```
-
-#### `injectAll(token, options?)(target)` / `injectAllAsync(token, options?)(target)`
-
-Multi-provider accumulation protocol collecting all matching services up the ancestor hierarchy.
-
-- `direction`: `'bottomUp'` (default) | `'topDown'`
-
-```ts
-const plugins = injectAll('plugin', { direction: 'topDown' })(childElement)
-```
-
----
-
-### 5. Signals Module (`@sandlada/document-context/signals`)
-
-#### `toSignal(session, selector)`
-
-Adapts a reactive state slice into a TC39 Signal-compatible object with a `.get()` method.
-
-```ts
-import { toSignal } from '@sandlada/document-context/signals'
-
-const countSignal = toSignal(session, (s) => s.count)
-console.log(countSignal.get())
-```
-
----
-
-### 6. TypeScript `ServiceRegistry` Type Augmentation
-
-String tokens support 100% type safety and auto-completion across bundle boundaries via TypeScript declaration merging:
-
-```ts
-// types/context.d.ts
-import type { AuthService, Logger } from './services'
-
-declare module '@sandlada/document-context' {
-    interface ServiceRegistry {
-        'auth:service': AuthService
-        'logger:service': Logger
-    }
-}
-```
-
----
-
-## License
-
-MIT
+Historical v0.0.1 sources were removed from `src/`; see [`docs/archive/v0.0.1`](./docs/archive/v0.0.1).
