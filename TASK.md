@@ -25,7 +25,7 @@ Execution tracking for the layered `@sandlada/document-context` package. Depreca
 - [x] pnpm workspace; root scripts delegate to `@sandlada/document-context`.
 - [x] CI builds and verifies `packages/document-context/build/*` subpaths.
 - [x] Archive v0.0.1 `DESIGN.md` and top-level docs under `docs/archive/v0.0.1/`.
-- [x] Root README and CHANGELOG for v0.1.0; rewrite `AGENTS.md` for layered layout.
+- [x] Package README, LICENSE, CHANGELOG (root symlinks); rewrite `AGENTS.md` for layered layout.
 - [ ] Optional CI: `publint`, `@arethetypes/wrong`, `size-limit` (see [14-packaging-release.md](./docs/next-version-deprecated/14-packaging-release.md)).
 - [ ] Playwright e2e for Closed Shadow DOM (happy-dom e2e tests exist today).
 - [ ] Starlight site refresh for v0.1.0 (P1; legacy `0.0.1` site remains).

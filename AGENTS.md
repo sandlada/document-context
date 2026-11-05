@@ -3,7 +3,8 @@
 System instructions and coding conventions for AI agents working on `@sandlada/document-context` **v0.1.0** (layered monorepo).
 
 > **Reference documents**
-> - **Architecture & API (deprecated spec)**: [`docs/next-version-deprecated/`](./docs/next-version-deprecated/README.md) — historical blueprint; prefer `packages/document-context` source and tests when they disagree (especially [01-architecture](./docs/next-version-deprecated/01-architecture.md), [03-application-api](./docs/next-version-deprecated/03-application-api.md), [10-testing](./docs/next-version-deprecated/10-testing.md)).
+> - **Forward API design**: [`docs/next-version/`](./docs/next-version/README.md) — production macro contract (SSR, lifecycle, hooks, Promise, lazy load). Not a description of the code currently in `packages/document-context`.
+> - **Architecture & API (deprecated spec)**: [`docs/next-version-deprecated/`](./docs/next-version-deprecated/README.md) — historical blueprint; prefer forward macro + source/tests when they disagree. Deprecated [01-architecture](./docs/next-version-deprecated/01-architecture.md) uses legacy “hexagonal / Clean” wording; **maintainer layering rules** are summarized in AGENTS §1 and [11-composition §11.9](./docs/next-version/11-composition.md).
 > - **Roadmap & cutover**: [`TASK.md`](./TASK.md).
 > - **v0.0.1 history only**: [`docs/archive/v0.0.1/`](./docs/archive/v0.0.1/README.md) — not a compatibility contract.
 
@@ -11,14 +12,15 @@ System instructions and coding conventions for AI agents working on `@sandlada/d
 
 ## 1. Project overview
 
-Publishable code lives in [`packages/document-context`](./packages/document-context). The library is a **function-first, DOM-hosted IoC and reactive state** package with:
+Publishable code lives in [`packages/document-context`](./packages/document-context). Canonical **README**, **LICENSE**, **CHANGELOG**, **CODE_OF_CONDUCT**, and **SECURITY** also live in that directory; repository root copies are **symlinks** for GitHub and npm discovery—edit the package files only. The library is a **function-first, DOM-hosted IoC and reactive state** package with:
 
 1. **Physical DOM as scope** — ancestry-chain resolution; W3C Context Protocol transport in infrastructure.
 2. **Zero-leak lifecycle** — centralized observer, keyed suspension/resuscitation, `abort$`-bounded subscriptions.
 3. **RxJS first-class** — `state$`, `errors$`, `lifecycle$`; required peer `rxjs`.
-4. **Strict layering** — `domain` (zero DOM) ← `application` ← `infrastructure`; composition root at [`packages/document-context/src/index.ts`](./packages/document-context/src/index.ts).
-5. **Late-binding DI** — async-first `inject` / `inject$`; sync `*Sync` verbs are deprecated second-tier projections.
-6. **No built-in DOM bridge** — no `withBridge`; users compose DOM updates via streams (see [08-projection](./docs/next-version-deprecated/08-projection.md)).
+4. **Strict layering** — `domain` (zero DOM) ← `application` ← `infrastructure`; **single composition root** at [`packages/document-context/src/index.ts`](./packages/document-context/src/index.ts) wires adapters into `createApplication({ host, ssr? })`. Do **not** frame the product as “hexagonal architecture” in user-facing copy; the maintainer story is **function-first API + two-phase model + ports at the composition root** (aligned with [`docs/next-version/`](./docs/next-version/README.md) `00`–`11`). Functional data-last verbs and ports are complementary; **`application` must not import infrastructure** (no DOM-adapter shortcuts).
+5. **Domain ports** — `HostPort`, `SchedulerPort`, `ScopeTransportPort` (and tests via fake ports). Implementation detail lives under `packages/document-context/src/domain/ports` and `infrastructure/*`.
+6. **Late-binding DI** — async-first `inject` / `inject$`; sync `*Sync` verbs are deprecated second-tier projections.
+7. **No built-in DOM bridge** — no `withBridge`; users compose DOM updates via streams (see [08-projection](./docs/next-version-deprecated/08-projection.md)).
 
 ### Two-phase model
 
@@ -54,7 +56,7 @@ update((s) => ({ count: s.count + 1 }))(session)
 
 ### Tokens
 
-Use `defineToken('namespace:name')` and `ServiceRegistry` declaration merging (see [02b-tokens](./docs/next-version-deprecated/02b-tokens.md)). Keyed identity uses `mount(bp, { token })`.
+Use `defineToken<T>('public')('namespace:name')` or `defineToken<T>('private')(name)` and `ServiceRegistry` declaration merging (see [07-tokens](./docs/next-version/07-tokens.md)). `inject<T>` carries the service type. Keyed identity uses `mount(bp, { token })`. `definePrivateToken` is deprecated.
 
 ### Package exports
 
