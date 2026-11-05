@@ -3,7 +3,7 @@
 // The PNGs are committed and served from `public/`, so this script is a
 // developer tool, not part of the build: running it requires a font stack for
 // the SVG text and its output would not be byte-identical across machines.
-// Re-run `npm run generate:icons` after editing `assets/og.svg` or
+// Re-run `pnpm run generate:icons` after editing `assets/og.svg` or
 // `public/favicon.svg` and commit the regenerated PNGs.
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';

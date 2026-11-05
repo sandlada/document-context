@@ -9,6 +9,9 @@ packages/document-context/coverage/
 # dependencies
 node_modules/
 package-lock.json
+yarn.lock
+bun.lock
+bun.lockb
 
 # logs
 npm-debug.log*

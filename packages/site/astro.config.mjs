@@ -93,7 +93,7 @@ export default defineConfig({
             plugins: [
                 // Syncs the narrative pages first, so every Astro entry point
                 // (dev/build/check/sync) sees generated content without an
-                // explicit `npm run sync` step.
+                // explicit `pnpm run sync` step.
                 {
                     name: 'sync-content',
                     hooks: {
@@ -142,7 +142,7 @@ export default defineConfig({
                 // archived as well.
                 seoApiPages,
                 // No archived versions yet (versions.json is empty): skip the
-                // versions plugin until `npm run version:new` creates the first
+                // versions plugin until `pnpm run version:new` creates the first
                 // snapshot, since it requires at least one version.
                 ...(versions.length > 0 ? [starlightVersions({ versions })] : []),
                 starlightLinksValidator(),

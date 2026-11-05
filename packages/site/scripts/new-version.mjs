@@ -75,9 +75,8 @@ Next steps:
 }
 
 function runBuild() {
-    // `npm_execpath` is set whenever npm runs this script, which lets the child
-    // reuse the current Node binary without going through a shell. The fallback
-    // keeps direct `node scripts/new-version.mjs` invocations working.
+    // `npm_execpath` is set when pnpm (or npm) runs this script, which lets the
+    // child reuse the current Node binary without going through a shell.
     if (process.env.npm_execpath) {
         execFileSync(process.execPath, [process.env.npm_execpath, 'run', 'build'], {
             cwd: siteRoot,
@@ -87,7 +86,7 @@ function runBuild() {
         return;
     }
 
-    execFileSync('npm', ['run', 'build'], {
+    execFileSync('pnpm', ['run', 'build'], {
         cwd: siteRoot,
         shell: process.platform === 'win32',
         stdio: 'inherit',

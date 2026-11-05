@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **BREAKING**: Greenfield rewrite; v0.0.1 module paths (`/core`, `/bridge`, `/storage`, `/dom`, `/signals`) removed.
 - **BREAKING**: `withBridge`, `withStorage`, `withProvider`, `withHook` replaced by `persist`, `provide*`, and named hooks (see migration guide).
+- Monorepo uses a single root `pnpm-lock.yaml` for `packages/document-context`, `packages/demo`, and `packages/site`; install only from the repository root.
 - RxJS is a required peer dependency (no longer optional).
 
 ### Removed

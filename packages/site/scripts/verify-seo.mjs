@@ -1,7 +1,7 @@
 // Checks the built site for the search-metadata invariants that page
 // components cannot enforce on their own.
 //
-// Runs after `astro build` through `npm run build`. The archived version
+// Runs after `astro build` through `pnpm run build`. The archived version
 // directories come from `versions.json`, so a newly archived version is
 // covered without touching this file.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { readJsonFile } from '../lib/io.mjs';
 import { apiPages, distDirectory, siteDescription, siteUrl, versionsFile } from '../lib/site.mjs';
 
 if (!existsSync(distDirectory)) {
-    console.error('verify:seo: dist/ does not exist. Run `npm run build` first.');
+    console.error('verify:seo: dist/ does not exist. Run `pnpm run build` first.');
     process.exit(1);
 }
 
