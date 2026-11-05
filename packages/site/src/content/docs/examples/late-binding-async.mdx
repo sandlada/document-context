@@ -1,0 +1,60 @@
+---
+title: Late Binding & Async Providers
+description: Decouple component loading order with late binding and handle asynchronous provider coalescing and retries.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+In modern web applications with code splitting, microfrontends, or dynamic DOM insertion, child components often mount or request dependencies before their parent containers are initialized. This example shows how `@sandlada/document-context` handles **Late Binding** and **Async Provider Coalescing**.
+
+<DemoSandbox
+    name="late-binding"
+    title="Late Binding & Async Providers"
+    minHeight={460}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Late Binding (Inject Before Mount)
+In legacy IoC libraries, calling `inject()` on a consumer element before the provider container is registered throws an immediate `ServiceNotFoundError`.
+
+In `@sandlada/document-context`, `inject(token)(targetElement)` returns a `Promise` that remains pending if no matching provider is found immediately. Once an ancestor element mounts a provider for that token, the pending promise resolves automatically.
+
+```ts
+import { defineToken, inject, mount, pipe, provide } from '@sandlada/document-context'
+
+const authServiceToken = defineToken<{ getUser(): string }>('public')('app:auth-service')
+const childNode = document.getElementById('child-widget')!
+
+// 1. Requested BEFORE ancestor container is mounted
+const pendingAuth = inject(authServiceToken)(childNode)
+pendingAuth.then((auth) => {
+    console.log('Late resolved user:', auth.getUser())
+})
+
+// 2. Ancestor mounts later
+const parentBlueprint = pipe(
+    provide(authServiceToken, () => ({ getUser: () => 'Alice' })),
+)
+const session = mount(parentBlueprint)(document.getElementById('parent-box')!)
+await session.ready
+// -> The pending promise automatically resolves!
+```
+
+### 2. Async Provider In-Flight Coalescing
+When multiple descendants request an async factory concurrently, `@sandlada/document-context` coalesces in-flight requests into a single promise execution. All callers receive the same resolved instance without redundant network fetches:
+
+```ts
+const configToken = defineToken<AppConfig>('public')('app:remote-config')
+
+const blueprint = pipe(
+    provide(configToken, async () => {
+        const response = await fetch('/api/config')
+        if (!response.ok) throw new Error('Network error')
+        return response.json()
+    }),
+)
+```
+
+### 3. Eviction on Failure for Safe Retries
+If an asynchronous provider factory rejects, the failed entry is evicted from the internal cache. Subsequent calls to `inject` will trigger a fresh attempt rather than caching the rejected error permanently.

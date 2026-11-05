@@ -31,3 +31,6 @@ src/content/docs/w3c-protocol.md
 
 # Generated copies of the module READMEs (src/<module>/README.md)
 src/content/docs/specs/
+
+# Generated current demos and bundle snapshots (archived versions live in public/demos/<version>/ and are committed)
+public/demos/current/

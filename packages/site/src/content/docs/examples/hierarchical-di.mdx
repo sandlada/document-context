@@ -1,0 +1,50 @@
+---
+title: Hierarchical Dependency Injection
+description: Anchor IoC scopes to the physical DOM tree with ancestor inheritance and nearest-wins shadowing.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+`@sandlada/document-context` turns the physical DOM tree into an IoC scope hierarchy. Services provided by ancestor elements are automatically inherited by descendant nodes, while nested scopes can shadow registrations with local overrides.
+
+<DemoSandbox
+    name="di-hierarchy"
+    title="Hierarchical DI & Scope Shadowing"
+    minHeight={500}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Physical DOM as Scope
+Unlike traditional class-based dependency injection containers that require explicit manual parent references, `@sandlada/document-context` resolves dependencies by walking up the physical DOM tree (`node.parentElement` and shadow root hosts) using the W3C Context Protocol event bus.
+
+```ts
+import { defineToken, inject, provide } from '@sandlada/document-context'
+
+// Declare a typed public token with namespace:name format
+interface ThemeConfig {
+    readonly name: string
+    readonly mode: string
+}
+const themeToken = defineToken<ThemeConfig>('public')('app:theme')
+```
+
+### 2. Nearest-Wins Shadowing
+When multiple containers provide a value for the same token along the ancestry chain, the provider closest to the requesting descendant node wins:
+
+- **Root Element (`#scope-root`)**: Provides default theme `corporate-blue`.
+- **Section A (`#scope-child-inherit`)**: Has no local theme provider. Injecting `themeToken` from Section A walks up to the root element and receives `corporate-blue`.
+- **Section B (`#scope-child-override`)**: Registers a local provider with `emerald-green`. Injecting `themeToken` from Section B returns `emerald-green` for itself and all its descendants, effectively shadowing the ancestor registration.
+
+### 3. Multi-Provider Collection with `injectAll`
+Use `injectAll(token)(element)` to collect all matching service instances along the entire DOM ancestor path from nearest to furthest. This pattern is ideal for middleware pipelines, telemetry hooks, or extensible plugin registries:
+
+```ts
+import { injectAll } from '@sandlada/document-context'
+
+// Collects all loggers registered at Section B, its parent, and the root container
+const allLoggers = await injectAll(loggerToken)(sectionBElement)
+for (const logger of allLoggers) {
+    logger.log('Action performed')
+}
+```

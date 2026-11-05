@@ -204,3 +204,37 @@ sl-sidebar-pane {
 .right-sidebar {
     border-inline-start: none;
 }
+
+div.copy {
+
+}
+
+.expressive-code .copy button {
+    background: var(--md-sys-color-surface);
+    border-radius: 20px;
+}
+
+.expressive-code .frame.has-title:not(.is-terminal) .header {
+    background: transparent;
+}
+.expressive-code .frame .header {
+    border-radius: 0px;
+}
+.expressive-code .frame {
+    box-shadow: none;
+}
+.expressive-code .frame.has-title:not(.is-terminal) .title {
+    border: none;
+    outline: none;
+    border-radius: 0px;
+}
+.expressive-code .frame.has-title:not(.is-terminal) .title::after {
+    content: none;
+}
+.expressive-code pre {
+    border: 1px solid var(--md-sys-color-outline-variant);
+    background: var(--md-sys-color-surface);
+}
+.expressive-code .frame.has-title:not(.is-terminal) .title {
+    background: var(--md-sys-color-surface);
+}

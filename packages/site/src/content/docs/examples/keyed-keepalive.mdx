@@ -1,0 +1,53 @@
+---
+title: Keyed Suspension & Keep-Alive
+description: Preserve reactive state across DOM detachments with keyed sessions and suspension grace periods.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+When building tabbed interfaces, virtual lists, or draggable dashboards, DOM elements are frequently detached and re-attached. `@sandlada/document-context` provides **keyed suspension** to keep session state alive across detachments without leaking memory.
+
+<DemoSandbox
+    name="keyed-keepalive"
+    title="Keyed Suspension & Keep-Alive"
+    minHeight={450}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Anonymous vs. Keyed Sessions
+- **Anonymous Sessions (`mount(blueprint)(element)`)**: When detached from the DOM, a microtask reparenting check runs. If the node is not reinserted into the DOM within the microtask, the session is permanently disposed.
+- **Keyed Sessions (`mount(blueprint, { token, suspensionTtlMs })(element)`)**: When detached, the session transitions from `Active` to `Suspended`. The session and its reactive state are preserved in an internal registry for the duration of `suspensionTtlMs` (default 5000ms).
+
+```ts
+import { defineToken, mount } from '@sandlada/document-context'
+
+const cartToken = defineToken('public')('app:cart-widget')
+
+// Mount with explicit key and 5000ms suspension TTL
+const session = mount(cartBlueprint, {
+    token: cartToken,
+    suspensionTtlMs: 5000,
+})(widgetElement)
+await session.ready
+```
+
+### 2. Resuscitation upon Reattachment
+If a node with the same key is mounted before the `suspensionTtlMs` grace period expires, the session resuscitates with all previous state intact:
+
+```ts
+// 1. Element removed from DOM -> lifecycle transitions to 'Suspended'
+widgetElement.remove()
+
+// 2. Later inserted back into DOM -> resuscitates with existing state preserved!
+parentElement.appendChild(widgetElement)
+const resuscitated = mount(cartBlueprint, { token: cartToken })(widgetElement)
+await resuscitated.ready
+```
+
+### 3. Lifecycle Stream (`session.lifecycle$`)
+The session handle exposes a reactive `lifecycle$` Observable that emits status changes:
+- `'Mounting'`: Blueprint validation and port adapter wiring.
+- `'Active'`: Ready for state reads and updates.
+- `'Suspended'`: Node detached; state held in grace period.
+- `'Disposed'`: TTL expired or manual teardown triggered.

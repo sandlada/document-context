@@ -1,0 +1,49 @@
+---
+title: Reactive Error Boundaries
+description: Catch runtime exceptions gracefully using blueprint onError hooks and session error streams.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+Robust enterprise applications need fault isolation so that an error in one component or async service does not take down the entire application. `@sandlada/document-context` provides reactive error handling through declarative blueprint operators and session streams.
+
+<DemoSandbox
+    name="error-boundary"
+    title="Reactive Error Boundaries"
+    minHeight={420}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Declarative `onError` Blueprint Hook
+In Phase 1, you can attach error boundaries directly to blueprints using the `onError` operator. Whenever an unhandled exception occurs inside a lifecycle hook, a service factory, or a state update, `onError` intercepts the error and gives you access to the session context:
+
+```ts
+import { createContext, onError, pipe } from '@sandlada/document-context'
+
+const safeBlueprint = pipe(
+    createContext({ value: 10 }),
+    onError(({ error, session }) => {
+        console.error('Caught error in blueprint boundary:', error.message)
+        // Log to telemetry service or dispatch fallback state
+    }),
+)
+```
+
+### 2. Session `errors$` Observable
+Every mounted session exposes an `errors$` stream. UI layers and monitoring components can subscribe to this stream to display toast alerts, fallback placeholders, or retry buttons:
+
+```ts
+import { mount } from '@sandlada/document-context'
+
+const session = mount(safeBlueprint)(hostElement)
+await session.ready
+
+session.errors$.subscribe((error) => {
+    // Show error banner in UI
+    displayAlert(error.message)
+})
+```
+
+### 3. Non-Fatal Reducer Exceptions
+When an exception is thrown inside an `update` reducer, the update operation is aborted, the previous state remains intact, and the error is routed to `errors$`. The session's `state$` stream does not complete or crash, ensuring uninterrupted UI responsiveness.

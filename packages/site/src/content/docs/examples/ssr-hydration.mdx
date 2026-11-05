@@ -1,0 +1,60 @@
+---
+title: SSR Simulation & Client Hydration
+description: Render pure blueprints in server environments and hydrate them seamlessly on the browser DOM.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+Modern full-stack web applications demand fast initial page loads via Server-Side Rendering (SSR) without sacrificing client interactivity. `@sandlada/document-context` provides an SSR infrastructure layer designed for per-request isolation and client hydration.
+
+<DemoSandbox
+    name="ssr-hydration"
+    title="SSR Simulation & Client Hydration"
+    minHeight={450}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Per-Request Application Isolation
+In server environments (such as Node.js, Cloudflare Workers, or Deno), `createSsrApplication()` creates an isolated application instance for each incoming request:
+
+```ts
+import { createContext } from '@sandlada/document-context'
+import { createSsrApplication } from '@sandlada/document-context/infrastructure/ssr'
+
+// In server request handler:
+const ssrApp = createSsrApplication()
+const serverHost = ssrApp.ports.ssr?.createHost() ?? { kind: 'server' }
+
+const blueprint = createContext({ articleId: 42, views: 1024 })
+const session = ssrApp.mount(blueprint)(serverHost)
+await session.ready
+
+const renderedViews = ssrApp.read((s: { views: number }) => s.views)(session)
+
+// Render HTML with embedded state payload
+const html = `<div id="article-host"><p>Views: ${renderedViews}</p></div>`
+
+// Clean up server session and ports
+ssrApp.dispose(session)
+ssrApp.release()
+```
+
+### 2. Zero DOM in Server Mode
+The SSR host adapter uses a synthetic placeholder host rather than a heavy headless DOM implementation (like jsdom). This makes server renders lightweight, fast, and secure.
+
+### 3. Client Hydration
+On the browser, the client receives the server-rendered HTML and initial state payload. Mounting the same blueprint onto the existing physical DOM element immediately re-attaches reactive streams and event listeners without re-rendering or layout flickering:
+
+```ts
+import { mount, subscribe$, update } from '@sandlada/document-context'
+
+const liveHost = document.getElementById('article-host')!
+const clientSession = mount(blueprint)(liveHost)
+await clientSession.ready
+
+// Resumes reactive state updates on the client
+subscribe$((state) => {
+    document.getElementById('ssr-views')!.textContent = String(state.views)
+})(clientSession)
+```

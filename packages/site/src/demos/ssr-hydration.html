@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SSR Simulation & Client Hydration</title>
+    <link rel="stylesheet" href="./md3-theme.css" />
+    <style>
+        .container { max-width: 650px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .stage-title {
+            font-size: 0.875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--md-sys-color-primary);
+        }
+        .code-preview {
+            background-color: var(--md-sys-color-surface-container-lowest);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-value-small);
+            padding: 0.75rem;
+            font-family: var(--md-sys-typescale-mono-font);
+            font-size: 0.75rem;
+            color: var(--md-sys-color-on-surface);
+            white-space: pre-wrap;
+            word-break: break-all;
+            min-height: 110px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="split-grid">
+            <!-- Server Simulation Card -->
+            <div class="card" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <span class="stage-title">1. Server Render (SSR)</span>
+                <p style="font-size: 0.8125rem; color: var(--md-sys-color-on-surface-variant);">
+                    <code>createSsrApplication()</code> executes in Node.js (zero DOM). Pre-renders snapshot into HTML payload.
+                </p>
+                <div class="code-preview" id="ssr-html-output">&lt;!-- Click Run Server Render --&gt;</div>
+                <button class="primary" id="btn-render-server">Run Server Render</button>
+            </div>
+
+            <!-- Client Hydration Card -->
+            <div class="card" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <span class="stage-title">2. Client Hydration</span>
+                <p style="font-size: 0.8125rem; color: var(--md-sys-color-on-surface-variant);">
+                    Client receives HTML and mounts on the live DOM host, resuming reactive streams seamlessly.
+                </p>
+                <div class="code-preview" id="client-dom-box" style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                    <span id="client-label" style="color: var(--md-sys-color-outline);">Waiting for SSR...</span>
+                </div>
+                <button id="btn-hydrate-client" disabled>Hydrate Client Session</button>
+            </div>
+        </div>
+
+        <div class="log-box">
+            <div class="log-header">LIFECYCLE & HYDRATION LOG</div>
+            <ul class="log-entries" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            createContext,
+            mount,
+            pipe,
+            read,
+            subscribe$,
+            update,
+        } from '@sandlada/document-context'
+        import { createSsrApplication } from '@sandlada/document-context/infrastructure/ssr'
+
+        const logList = document.getElementById('log-list')
+        function log(msg) {
+            const li = document.createElement('li')
+            li.className = 'log-entry'
+            li.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`
+            logList.prepend(li)
+        }
+
+        const ssrOutputEl = document.getElementById('ssr-html-output')
+        const clientBox = document.getElementById('client-dom-box')
+        const hydrateBtn = document.getElementById('btn-hydrate-client')
+
+        let serverPayload = null
+
+        // Shared Blueprint contract for both Server and Client
+        function createAppBlueprint(initialState) {
+            return pipe(
+                createContext(initialState),
+            )
+        }
+
+        // 1. Simulate Server Render
+        document.getElementById('btn-render-server').addEventListener('click', async () => {
+            log('Starting SSR render with <strong>createSsrApplication()</strong>...')
+            const ssrApp = createSsrApplication()
+            const serverHost = ssrApp.ports.ssr?.createHost() ?? { kind: 'server' }
+
+            const initialData = { articleId: 42, views: 1024, title: 'Document Context v0.1 Deep Dive' }
+            const ssrBlueprint = createAppBlueprint(initialData)
+
+            const serverSession = ssrApp.mount(ssrBlueprint)(serverHost)
+            await serverSession.ready
+
+            const renderedTitle = ssrApp.read((s) => s.title)(serverSession)
+            const renderedViews = ssrApp.read((s) => s.views)(serverSession)
+
+            // Package into serialized HTML payload with embedded JSON data script
+            serverPayload = {
+                html: `<div id="article-host" data-article="${initialData.articleId}"><h3 style="color: var(--md-sys-color-primary);">${renderedTitle}</h3><p style="margin-top: 0.25rem;">Views: <strong id="ssr-views" style="font-family: var(--md-sys-typescale-mono-font);">${renderedViews}</strong></p></div>`,
+                state: initialData,
+            }
+
+            // Teardown server session
+            ssrApp.dispose(serverSession)
+            ssrApp.release()
+            log('SSR finished: server application disposed & memory released.')
+
+            ssrOutputEl.textContent = serverPayload.html
+            clientBox.innerHTML = serverPayload.html
+
+            hydrateBtn.disabled = false
+            hydrateBtn.className = 'primary'
+            hydrateBtn.textContent = 'Hydrate Live Client Session'
+        })
+
+        // 2. Client Hydration
+        hydrateBtn.addEventListener('click', async () => {
+            if (!serverPayload) return
+            hydrateBtn.disabled = true
+            log('Client receives SSR HTML. Mounting client application on existing DOM host...')
+
+            const liveHost = document.getElementById('article-host')
+            const clientBlueprint = createAppBlueprint(serverPayload.state)
+
+            // Mount on the physical DOM node pre-rendered by server
+            const clientSession = mount(clientBlueprint)(liveHost)
+            await clientSession.ready
+            log('Client session mounted! State connected to DOM event loop.')
+
+            // Connect reactive DOM subscriber
+            subscribe$((state) => {
+                const viewsEl = document.getElementById('ssr-views')
+                if (viewsEl) viewsEl.textContent = String(state.views)
+            })(clientSession)
+
+            // Add interactive button
+            const incBtn = document.createElement('button')
+            incBtn.textContent = 'Increment Live Views (+1)'
+            incBtn.className = 'tonal'
+            incBtn.style.marginTop = '0.75rem'
+            incBtn.addEventListener('click', () => {
+                update((s) => ({ views: s.views + 1 }))(clientSession)
+                log('Client update verb invoked: view count incremented live.')
+            })
+            clientBox.appendChild(incBtn)
+        })
+    </script>
+</body>
+</html>

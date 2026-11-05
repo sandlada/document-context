@@ -1,0 +1,214 @@
+:root {
+    color-scheme: light dark;
+
+    /* MD3 Color Tokens (light-dark) */
+    --md-sys-color-background: light-dark(#f6faf7, #0f1413);
+    --md-sys-color-on-background: light-dark(#171d1b, #dfe4e1);
+    --md-sys-color-surface: light-dark(#f6faf7, #0f1413);
+    --md-sys-color-surface-dim: light-dark(#d6dbd8, #0f1413);
+    --md-sys-color-surface-bright: light-dark(#f6faf7, #353a38);
+    --md-sys-color-surface-container-lowest: light-dark(#ffffff, #0a0f0e);
+    --md-sys-color-surface-container-low: light-dark(#f0f5f2, #171d1b);
+    --md-sys-color-surface-container: light-dark(#eaefec, #1b211f);
+    --md-sys-color-surface-container-high: light-dark(#e4e9e6, #262b29);
+    --md-sys-color-surface-container-highest: light-dark(#dfe4e1, #313634);
+    --md-sys-color-on-surface: light-dark(#171d1b, #dfe4e1);
+    --md-sys-color-on-surface-variant: light-dark(#3e4946, #bdc9c4);
+    --md-sys-color-outline: light-dark(#6d7a76, #87938f);
+    --md-sys-color-outline-variant: light-dark(#bdc9c4, #3e4946);
+
+    --md-sys-color-primary: light-dark(#006a5b, #72d8c2);
+    --md-sys-color-on-primary: light-dark(#ffffff, #00382f);
+    --md-sys-color-primary-container: light-dark(#8ff5de, #005144);
+    --md-sys-color-on-primary-container: light-dark(#00201a, #8ff5de);
+
+    --md-sys-color-secondary: light-dark(#4a635d, #b1ccc3);
+    --md-sys-color-on-secondary: light-dark(#ffffff, #1c3530);
+    --md-sys-color-secondary-container: light-dark(#cde8df, #334b46);
+    --md-sys-color-on-secondary-container: light-dark(#06201b, #cde8df);
+
+    --md-sys-color-tertiary: light-dark(#446279, #acceea);
+    --md-sys-color-on-tertiary: light-dark(#ffffff, #133449);
+    --md-sys-color-tertiary-container: light-dark(#c9e6ff, #2c4a60);
+    --md-sys-color-on-tertiary-container: light-dark(#001e30, #c9e6ff);
+
+    --md-sys-color-error: light-dark(#ba1a1a, #ffb4ab);
+    --md-sys-color-on-error: light-dark(#ffffff, #690005);
+    --md-sys-color-error-container: light-dark(#ffdad6, #93000a);
+    --md-sys-color-on-error-container: light-dark(#93000a, #ffdad6);
+
+    /* MD3 Shape Tokens */
+    --md-sys-shape-corner-value-none: 0px;
+    --md-sys-shape-corner-value-extra-small: 4px;
+    --md-sys-shape-corner-value-small: 8px;
+    --md-sys-shape-corner-value-medium: 12px;
+    --md-sys-shape-corner-value-large: 16px;
+    --md-sys-shape-corner-value-extra-large: 28px;
+    --md-sys-shape-corner-value-full: 9999px;
+
+    /* Typography */
+    --md-sys-typescale-body-font: system-ui, -apple-system, sans-serif;
+    --md-sys-typescale-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root[data-theme='light'] {
+    color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--md-sys-typescale-body-font);
+    background-color: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-background);
+    line-height: 1.5;
+    padding: 1rem;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* MD3 Card (Elevated / Outlined) */
+.card, .md3-card {
+    background-color: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-value-medium);
+    padding: 1.25rem;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* MD3 Buttons (Filled, Outlined, Tonal, Error) */
+button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--md-sys-shape-corner-value-full);
+    border: 1px solid var(--md-sys-color-outline);
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+    font-family: var(--md-sys-typescale-body-font);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+button:hover {
+    background-color: var(--md-sys-color-surface-container-high);
+}
+
+button:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+}
+
+button.primary {
+    background-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    border: none;
+}
+
+button.primary:hover:not(:disabled) {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    filter: brightness(1.06);
+}
+
+button.tonal {
+    background-color: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+    border: none;
+}
+
+button.tonal:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
+button.danger, button.error {
+    background-color: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+    border: 1px solid var(--md-sys-color-error);
+}
+
+button.danger:hover:not(:disabled), button.error:hover:not(:disabled) {
+    background-color: var(--md-sys-color-error);
+    color: var(--md-sys-color-on-error);
+}
+
+/* MD3 Badges and Pills */
+.status-pill, .status-badge, .scope-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--md-sys-shape-corner-value-small);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background-color: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.status-pill.resolved, .status-badge.active {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+.status-pill.pending, .status-badge.suspended {
+    background-color: var(--md-sys-color-tertiary-container);
+    color: var(--md-sys-color-on-tertiary-container);
+}
+
+.status-pill.error, .status-badge.disposed {
+    background-color: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+}
+
+/* MD3 Log Panel */
+.log-box {
+    background-color: var(--md-sys-color-surface-container-low);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-value-small);
+    padding: 0.75rem 1rem;
+    font-family: var(--md-sys-typescale-mono-font);
+    font-size: 0.8125rem;
+    color: var(--md-sys-color-on-surface-variant);
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--md-sys-color-outline);
+}
+
+.log-entries {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.log-entry strong {
+    color: var(--md-sys-color-on-surface);
+}
+
+.log-entry.event {
+    color: var(--md-sys-color-primary);
+}

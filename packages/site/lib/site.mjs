@@ -106,3 +106,11 @@ export const specsDirectory = join(contentDocsDirectory, 'specs');
 export const distDirectory = join(siteRoot, 'dist');
 
 export const versionsFile = join(siteRoot, 'versions.json');
+
+export const srcDemosDirectory = join(siteRoot, 'src/demos');
+
+export const publicDemosDirectory = join(siteRoot, 'public/demos');
+
+export const currentDemosDirectory = join(publicDemosDirectory, 'current');
+
+export const currentVendorDirectory = join(currentDemosDirectory, 'vendor');

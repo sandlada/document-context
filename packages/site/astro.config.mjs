@@ -12,6 +12,7 @@ import overloadCodeblocks from './plugins/overload-codeblocks.mjs';
 import { entryPoints, modules, packageName, packageRoot, siteDescription, siteUrl } from './lib/site.mjs';
 import { resolveSourceRevision } from './lib/source-revision.mjs';
 import { syncContent } from './lib/sync-content.mjs';
+import { syncDemos } from './lib/sync-demos.mjs';
 
 const { versions } = JSON.parse(readFileSync(new URL('./versions.json', import.meta.url), 'utf8'));
 
@@ -39,6 +40,17 @@ const specSidebarItems = modules
 const sidebar = [
     { label: 'Start Here', items: ['getting-started', 'core-concepts'] },
     { label: 'Guides', items: ['lifecycles', 'w3c-protocol'] },
+    {
+        label: 'Examples',
+        items: [
+            'examples/reactive-counter',
+            'examples/hierarchical-di',
+            'examples/late-binding-async',
+            'examples/keyed-keepalive',
+            'examples/error-boundary',
+            'examples/ssr-hydration',
+        ],
+    },
     ...(specSidebarItems.length > 0
         ? [{ label: 'Module specs', items: specSidebarItems }]
         : []),
@@ -97,8 +109,9 @@ export default defineConfig({
                 {
                     name: 'sync-content',
                     hooks: {
-                        'config:setup': () => {
+                        'config:setup': async () => {
                             syncContent();
+                            await syncDemos();
                         },
                     },
                 },

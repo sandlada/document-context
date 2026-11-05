@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Keyed Suspension & Resuscitation</title>
+    <link rel="stylesheet" href="./md3-theme.css" />
+    <style>
+        .container { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .dom-slot {
+            min-height: 120px;
+            border: 2px dashed var(--md-sys-color-outline-variant);
+            border-radius: var(--md-sys-shape-corner-value-medium);
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--md-sys-color-surface-container-low);
+            margin: 1.25rem 0;
+        }
+        .widget {
+            background-color: var(--md-sys-color-surface-container-highest);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-value-small);
+            padding: 1.25rem;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 1rem; font-weight: 600;">Keyed Keep-Alive Slot (TTL: 5000ms)</h3>
+                <span class="status-badge active" id="badge-lifecycle">Active</span>
+            </div>
+
+            <div class="dom-slot" id="slot-container">
+                <!-- Widget DOM Node -->
+                <div class="widget" id="widget-node">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>Widget Item: Shopping Cart</strong>
+                        <span style="font-family: var(--md-sys-typescale-mono-font); font-size: 0.875rem;">
+                            Quantity: <strong id="qty-val" style="color: var(--md-sys-color-primary);">1</strong>
+                        </span>
+                    </div>
+                    <div style="margin-top: 0.75rem;">
+                        <button class="primary" id="btn-add-qty">+1 Item</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <button class="tonal" id="btn-toggle-dom">Detach Widget from DOM</button>
+                <span id="countdown-text" style="font-size: 0.8125rem; color: var(--md-sys-color-on-surface-variant);"></span>
+            </div>
+        </div>
+
+        <div class="log-box">
+            <div class="log-header">LIFECYCLE STREAM LOG</div>
+            <ul class="log-entries" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            createContext,
+            defineToken,
+            mount,
+            pipe,
+            subscribe$,
+            update,
+        } from '@sandlada/document-context'
+
+        const logList = document.getElementById('log-list')
+        function log(msg) {
+            const li = document.createElement('li')
+            li.className = 'log-entry'
+            li.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`
+            logList.prepend(li)
+        }
+
+        const slot = document.getElementById('slot-container')
+        const widgetNode = document.getElementById('widget-node')
+        const badge = document.getElementById('badge-lifecycle')
+        const toggleBtn = document.getElementById('btn-toggle-dom')
+        const countdownEl = document.getElementById('countdown-text')
+
+        // Phase 1: Blueprint
+        const cartBlueprint = pipe(
+            createContext({ quantity: 1 }),
+        )
+
+        // Keyed identity for preservation across detach/reattach
+        const cartKeyToken = defineToken('public')('app:cart-widget')
+
+        // Mount with 5s suspension TTL
+        let session = mount(cartBlueprint, { token: cartKeyToken, suspensionTtlMs: 5000 })(widgetNode)
+        await session.ready
+        log('Session mounted with <strong>key: app:cart-widget</strong> and TTL 5000ms.')
+
+        // Subscribe to state
+        subscribe$((state) => {
+            document.getElementById('qty-val').textContent = String(state.quantity)
+        })(session)
+
+        // Observe lifecycle stream
+        session.lifecycle$.subscribe((status) => {
+            log(`Lifecycle transitioned to: <strong>${status}</strong>`)
+            badge.textContent = status
+            badge.className = `status-badge ${status.toLowerCase()}`
+        })
+
+        document.getElementById('btn-add-qty').addEventListener('click', () => {
+            update((s) => ({ quantity: s.quantity + 1 }))(session)
+        })
+
+        let isAttached = true
+        let countdownTimer = null
+        let timeLeft = 5
+
+        toggleBtn.addEventListener('click', async () => {
+            if (isAttached) {
+                // Detach from DOM
+                widgetNode.remove()
+                isAttached = false
+                toggleBtn.textContent = 'Reattach Widget to DOM'
+                log('Widget removed from DOM. Microtask check completes -> enters <strong>Suspended</strong>.')
+
+                timeLeft = 5
+                countdownEl.textContent = `(Suspended grace period: ${timeLeft}s remaining)`
+                countdownTimer = setInterval(() => {
+                    timeLeft--
+                    if (timeLeft > 0) {
+                        countdownEl.textContent = `(Suspended grace period: ${timeLeft}s remaining)`
+                    } else {
+                        clearInterval(countdownTimer)
+                        countdownEl.textContent = '(TTL expired: session disposed by timer)'
+                    }
+                }, 1000)
+            } else {
+                // Reattach to DOM
+                clearInterval(countdownTimer)
+                countdownEl.textContent = ''
+                slot.appendChild(widgetNode)
+                isAttached = true
+                toggleBtn.textContent = 'Detach Widget from DOM'
+
+                // Mount again with the same keyed token: resuscitates with preserved state if within TTL!
+                session = mount(cartBlueprint, { token: cartKeyToken, suspensionTtlMs: 5000 })(widgetNode)
+                await session.ready
+                log('Reattached to DOM! Keyed session resuscitated; previous quantity state preserved.')
+            }
+        })
+    </script>
+</body>
+</html>

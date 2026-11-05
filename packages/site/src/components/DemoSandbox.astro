@@ -1,0 +1,217 @@
+---
+import { Code, Tabs, TabItem } from '@astrojs/starlight/components';
+import versionsData from '../../versions.json';
+
+interface Props {
+    name: string;
+    title: string;
+    minHeight?: string | number;
+}
+
+const { name, title, minHeight = 440 } = Astro.props;
+
+// Vite glob imports for robust build-time source inlining
+const rawDemos = import.meta.glob<string>('../demos/*.html', { query: '?raw', import: 'default', eager: true });
+const rawArchivedDemos = import.meta.glob<string>('/public/demos/**/*.html', { query: '?raw', import: 'default', eager: true });
+
+// Determine version segment from the URL
+const pathname = Astro.url.pathname;
+const configuredVersions = versionsData.versions as Array<{ slug: string; label?: string }>;
+const matchedVersion = configuredVersions.find((v) => pathname.startsWith(`/${v.slug}/`));
+
+const versionDir = matchedVersion ? matchedVersion.slug : 'current';
+const versionLabel = matchedVersion ? (matchedVersion.label ?? matchedVersion.slug) : '0.0.2-20261105.a (latest)';
+const iframeUrl = `/demos/${versionDir}/${name}.html`;
+
+// Resolve source code for preview
+let sourceCode = rawDemos[`../demos/${name}.html`] || '';
+if (versionDir !== 'current') {
+    sourceCode = rawArchivedDemos[`/public/demos/${versionDir}/${name}.html`] || sourceCode;
+}
+if (!sourceCode) {
+    sourceCode = `<!-- Source file ${name}.html not found -->`;
+}
+
+const heightStyle = typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
+const sandboxId = `sandbox-${name}-${Math.random().toString(36).slice(2, 7)}`;
+---
+
+<div class="demo-sandbox-card not-content" id={sandboxId}>
+    <div class="demo-sandbox-header">
+        <span class="demo-sandbox-title">{title}</span>
+        <div class="demo-sandbox-actions">
+            <button class="action-btn" type="button" data-action="reset" title="Reset interactive sandbox">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                </svg>
+                Reset
+            </button>
+            <a class="action-btn" href={iframeUrl} target="_blank" rel="noopener noreferrer" title="Open in new window">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+                Standalone
+            </a>
+        </div>
+    </div>
+
+    <Tabs>
+        <TabItem label="Interactive Preview" icon="laptop">
+            <div class="iframe-wrapper">
+                <iframe src={iframeUrl} style={`width: 100%; height: ${heightStyle}; border: none; display: block;`} loading="lazy" title={title}></iframe>
+            </div>
+        </TabItem>
+        <TabItem label="Source Code" icon="document">
+            <div class="source-wrapper">
+                <Code code={sourceCode} lang="html" title={`${name}.html`} />
+            </div>
+        </TabItem>
+    </Tabs>
+</div>
+
+<script define:vars={{ sandboxId }}>
+    (function () {
+        const root = document.getElementById(sandboxId);
+        if (!root) return;
+
+        const iframe = root.querySelector('iframe');
+        const resetBtn = root.querySelector('button[data-action="reset"]');
+
+        if (resetBtn && iframe) {
+            resetBtn.addEventListener('click', () => {
+                const currentSrc = iframe.src;
+                iframe.src = 'about:blank';
+                setTimeout(() => {
+                    iframe.src = currentSrc;
+                }, 50);
+            });
+        }
+
+        // Keep sandbox theme in sync with parent theme changes
+        const observer = new MutationObserver(() => {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'set-theme', theme: currentTheme }, '*');
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    })();
+</script>
+
+<style>
+    .demo-sandbox-card {
+        border: 1px solid var(--md-sys-color-outline);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--md-sys-color-surface-container);
+    }
+    .demo-sandbox-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-inline: 8px;
+        padding-block: 8px;
+        gap: 4px;
+        flex-wrap: wrap;
+
+        & .demo-sandbox-title {
+            display: flex;
+            align-items: center;
+            font-size: var(--_emphasized-title-small-size);
+            font-weight: var(--_emphasized-title-small-weight);
+            color: var(--md-sys-color-on-surface);
+            padding-inline: 12px;
+        }
+    }
+
+    .demo-sandbox-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .action-btn {
+        all: unset;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding-inline: 8px;
+        border-radius: 4px;
+        background: transparent;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 200ms ease;
+        min-height: 32px;
+        border: none;
+        outline-offset: 2px;
+        font-family: var(--sl-font-system-mono);
+        font-size: var(--_body-medium-size);
+
+        &:hover {
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 38%, transparent);
+            /*color: var(--md-sys-color-on-primary-container);*/
+        }
+
+        &:focus-within,
+        &:active {
+            border-radius: 20px;
+        }
+
+        &:focus-within {
+            outline: 2px solid var(--md-sys-color-primary);
+        }
+    }
+
+    .iframe-wrapper {
+        background: var(--sl-color-bg);
+        border-radius: 0 0 8px 8px;
+        overflow: hidden;
+    }
+    .source-wrapper {
+        margin: 0;
+        border-radius: 0 0 8px 8px;
+        max-height: 520px;
+        overflow-y: auto;
+    }
+    .source-wrapper :global(figure) {
+        margin: 0 !important;
+    }
+    .source-wrapper :global(pre) {
+        max-height: 520px;
+    }
+    :global(.demo-sandbox-card .tablist) {
+        margin-top: 0 !important;
+        /*border-bottom: 1px solid var(--sl-color-gray-5);*/
+        /*background: var(--sl-color-gray-6);*/
+    }
+</style>
+
+<style is:global>
+    starlight-tabs .tablist-wrapper ul li {
+        font-size: var(--_label-large-size);
+        font-weight: var(--_label-large-weight);
+        --sl-color-gray-5: var(--md-sys-color-outline-variant);
+    }
+
+    .expressive-code pre {
+        border: 1px solid var(--md-sys-color-outline-variant);
+    }
+
+    starlight-tabs .expressive-code pre {
+        border: none !important;
+    }
+
+    :where(.astro-tgzsoyhx)[role='tablist'] {
+        border-bottom: 2px solid var(--md-sys-color-outline-variant);
+    }
+    starlight-tabs [role='tabpanel'] {
+        margin-top: 0;
+    }
+
+    .tab:where(.astro-tgzsoyhx) :where(.astro-tgzsoyhx)[role='tab'][aria-selected='true'] {
+        --sl-tab-color-border: var(--md-sys-color-primary);
+    }
+</style>

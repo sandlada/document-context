@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Late Binding & Async Providers</title>
+    <link rel="stylesheet" href="./md3-theme.css" />
+    <style>
+        .container { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--md-sys-color-on-surface);
+            margin-bottom: 0.5rem;
+        }
+        .card-desc {
+            font-size: 0.8125rem;
+            color: var(--md-sys-color-on-surface-variant);
+            margin-bottom: 0.75rem;
+        }
+        .action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Scenario 1: Late Binding -->
+        <div class="card" id="late-host">
+            <div class="card-title">1. Late Binding (Inject Before Mount)</div>
+            <p class="card-desc">
+                Consumer element requests service before the parent provider container is mounted.
+            </p>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.875rem;">Consumer Status:</span>
+                <span class="status-pill pending" id="late-status">Pending (waiting for provider)</span>
+            </div>
+            <div class="action-row">
+                <button class="primary" id="btn-mount-late">Mount Provider Container Now</button>
+            </div>
+            <div id="late-child" style="display: none;"></div>
+        </div>
+
+        <!-- Scenario 2: Async Provider Coalescing -->
+        <div class="card" id="async-host">
+            <div class="card-title">2. Async Provider (Coalescing & Retry)</div>
+            <p class="card-desc">
+                Multiple concurrent inject() calls coalesce into a single fetch. Failures evict cache for retry.
+            </p>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <span style="font-size: 0.875rem;">Service Status:</span>
+                <span class="status-pill" id="async-status">Idle</span>
+            </div>
+            <div class="action-row">
+                <button class="primary" id="btn-fetch-parallel">Trigger 3 Parallel Injections</button>
+                <button class="tonal" id="btn-toggle-fail">Toggle Mock Network Failure (Currently: OK)</button>
+            </div>
+        </div>
+
+        <div class="log-box">
+            <div class="log-header">ACTIVITY STREAM LOG</div>
+            <ul class="log-entries" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            createContext,
+            defineToken,
+            inject,
+            mount,
+            pipe,
+            provide,
+        } from '@sandlada/document-context'
+
+        const logList = document.getElementById('log-list')
+        function log(msg) {
+            const li = document.createElement('li')
+            li.className = 'log-entry'
+            li.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`
+            logList.prepend(li)
+        }
+
+        // --- Scenario 1: Late Binding ---
+        const authServiceToken = defineToken('public')('app:auth-service')
+        const lateChildEl = document.getElementById('late-child')
+        const lateStatusEl = document.getElementById('late-status')
+
+        // Request before parent is mounted!
+        log('Consumer requests inject(authServiceToken) BEFORE mount...')
+        const pendingPromise = inject(authServiceToken)(lateChildEl)
+        pendingPromise.then((auth) => {
+            lateStatusEl.className = 'status-pill resolved'
+            lateStatusEl.textContent = `Resolved: ${auth.getUser()}`
+            log(`Late binding resolved successfully: <strong>${auth.getUser()}</strong>`)
+        }).catch((err) => {
+            log(`Late binding failed: ${err.message}`)
+        })
+
+        document.getElementById('btn-mount-late').addEventListener('click', async (e) => {
+            e.target.disabled = true
+            const lateBlueprint = pipe(
+                createContext({ name: 'LateContainer' }),
+                provide(authServiceToken, () => ({
+                    getUser: () => 'Alice (Admin Session)',
+                })),
+            )
+            const session = mount(lateBlueprint)(document.getElementById('late-host'))
+            await session.ready
+            log('Parent container mounted. Late pending promise automatically resolves.')
+        })
+
+        // --- Scenario 2: Async Provider with In-Flight Coalescing ---
+        const configToken = defineToken('public')('app:remote-config')
+        let shouldFail = false
+        let networkCallCount = 0
+
+        const asyncBlueprint = pipe(
+            createContext({ name: 'AsyncContainer' }),
+            provide(configToken, async () => {
+                networkCallCount++
+                log(`<strong>[Network Factory #${networkCallCount}]</strong> Fetching remote config...`)
+                await new Promise((r) => setTimeout(r, 800))
+                if (shouldFail) {
+                    throw new Error('500 Service Unavailable (mock)')
+                }
+                return { endpoint: 'https://api.sandlada.com/v1', callId: networkCallCount }
+            }),
+        )
+
+        const asyncHost = document.getElementById('async-host')
+        const asyncSession = mount(asyncBlueprint)(asyncHost)
+        await asyncSession.ready
+
+        const asyncStatusEl = document.getElementById('async-status')
+
+        document.getElementById('btn-toggle-fail').addEventListener('click', (e) => {
+            shouldFail = !shouldFail
+            e.target.textContent = `Toggle Mock Network Failure (Currently: ${shouldFail ? 'FAIL' : 'OK'})`
+            log(`Network mock failure is now: <strong>${shouldFail}</strong>`)
+        })
+
+        document.getElementById('btn-fetch-parallel').addEventListener('click', async () => {
+            asyncStatusEl.className = 'status-pill pending'
+            asyncStatusEl.textContent = 'Coalescing 3 requests...'
+            log('Dispatching 3 parallel inject(configToken) calls simultaneously...')
+
+            try {
+                const [r1, r2, r3] = await Promise.all([
+                    inject(configToken)(asyncHost),
+                    inject(configToken)(asyncHost),
+                    inject(configToken)(asyncHost),
+                ])
+                asyncStatusEl.className = 'status-pill resolved'
+                asyncStatusEl.textContent = `Success (Factory Run #${r1.callId})`
+                log(`All 3 parallel callers received same response from single in-flight call (Run #${r1.callId})`)
+            } catch (err) {
+                asyncStatusEl.className = 'status-pill error'
+                asyncStatusEl.textContent = `Error: ${err.message}`
+                log(`Async provider rejected: ${err.message}. Failed cache automatically evicted for retry.`)
+            }
+        })
+    </script>
+</body>
+</html>

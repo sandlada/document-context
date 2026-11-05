@@ -1,7 +1,9 @@
 @import "./override.css";
 @import "@fontsource-variable/google-sans-code";
 @import "@sandlada/material-design-css/preset.css";
-@import "@sandlada/material-design-css/prebuilt-colors/content/h180c60t50-2025.css";
+@import "@sandlada/material-design-css/typography/variables.css";
+@import "@sandlada/material-design-css/typography/utilities.css";
+@import "@sandlada/material-design-css/prebuilt-colors/content/h180c60t60-2025-oled.css";
 
 :root:not([data-theme="dark"]),
 :root[data-theme="light"] {
@@ -223,5 +225,3 @@
         --sl-mobile-toc-height: 0rem;
     }
 }
-
-

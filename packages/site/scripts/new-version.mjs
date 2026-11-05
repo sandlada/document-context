@@ -10,9 +10,9 @@
 // `versions.json` and removes the archive directories created along the way,
 // so the working tree is left exactly as it was found.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { contentDocsDirectory, siteRoot, versionsFile } from '../lib/site.mjs';
+import { contentDocsDirectory, currentDemosDirectory, publicDemosDirectory, siteRoot, versionsFile } from '../lib/site.mjs';
 
 main();
 
@@ -36,6 +36,7 @@ function main() {
 
     const archiveDirectory = join(contentDocsDirectory, slug);
     const archiveVersionsFile = join(contentDocsDirectory, '..', 'versions', `${slug}.json`);
+    const archiveDemosDirectory = join(publicDemosDirectory, slug);
 
     if (existsSync(archiveDirectory)) {
         console.error(`Version directory 'src/content/docs/${slug}/' already exists.`);
@@ -56,10 +57,16 @@ function main() {
         if (!existsSync(join(archiveDirectory, 'api'))) {
             throw new Error(`Expected 'src/content/docs/${slug}/api/' to be archived, but it is missing.`);
         }
+
+        if (existsSync(currentDemosDirectory)) {
+            cpSync(currentDemosDirectory, archiveDemosDirectory, { recursive: true });
+            console.log(`Archived interactive demo runtime into 'public/demos/${slug}/'.`);
+        }
     } catch (error) {
         writeFileSync(versionsFile, previousVersions);
         rmSync(archiveDirectory, { recursive: true, force: true });
         rmSync(archiveVersionsFile, { force: true });
+        rmSync(archiveDemosDirectory, { recursive: true, force: true });
         console.error(`version:new: ${error.message}`);
         console.error('The working tree was restored; no changes were left behind.');
         process.exit(1);
@@ -69,7 +76,7 @@ function main() {
 Archived the current documentation as '${slug}'.
 
 Next steps:
-  git add packages/site/src/content/docs/${slug} packages/site/src/content/versions/${slug}.json packages/site/versions.json
+  git add packages/site/src/content/docs/${slug} packages/site/src/content/versions/${slug}.json packages/site/versions.json packages/site/public/demos/${slug}
   git commit -m "docs(site): archive documentation for ${label}"
 `);
 }

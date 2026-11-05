@@ -16,7 +16,7 @@ if (!existsSync(distDirectory)) {
 
 const versions = readJsonFile(versionsFile).versions;
 
-const skippedDirectories = new Set(['_astro', 'pagefind']);
+const skippedDirectories = new Set(['_astro', 'pagefind', 'demos']);
 const fallbackDescription = siteDescription;
 
 const problems = [];

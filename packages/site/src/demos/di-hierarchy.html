@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hierarchical DI & Scope Shadowing</title>
+    <link rel="stylesheet" href="./md3-theme.css" />
+    <style>
+        .container { max-width: 650px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .scope-box {
+            border: 2px dashed var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-value-medium);
+            padding: 1.25rem;
+            position: relative;
+            background-color: var(--md-sys-color-surface-container);
+        }
+        .scope-box.root { border-color: var(--md-sys-color-primary); }
+        .scope-box.child {
+            border-color: var(--md-sys-color-tertiary);
+            margin-top: 0.75rem;
+            background-color: var(--md-sys-color-surface-container-high);
+        }
+        .root .scope-badge {
+            background-color: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .child .scope-badge {
+            background-color: var(--md-sys-color-tertiary-container);
+            color: var(--md-sys-color-on-tertiary-container);
+        }
+        .resolved-info {
+            font-family: var(--md-sys-typescale-mono-font);
+            font-size: 0.8125rem;
+            background-color: var(--md-sys-color-surface-container-lowest);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            color: var(--md-sys-color-on-surface);
+            padding: 0.5rem 0.75rem;
+            border-radius: var(--md-sys-shape-corner-value-small);
+            margin: 0.625rem 0;
+        }
+        .nested-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Root Scope Anchor -->
+        <div class="scope-box root" id="scope-root">
+            <span class="scope-badge">App Scope (Root)</span>
+            <p style="font-size: 0.875rem; margin-top: 0.5rem; color: var(--md-sys-color-on-surface-variant);">
+                Provides <code>app:theme</code> = <strong>"corporate-blue"</strong> and <code>app:logger</code> = <strong>[RootLogger]</strong>
+            </p>
+            <div class="resolved-info">
+                inject from Root: <span id="out-root">Click resolve</span>
+            </div>
+            <button class="primary" id="btn-resolve-root">inject(themeToken)(rootEl)</button>
+
+            <div class="nested-grid">
+                <!-- Child Scope 1: Inherits root theme -->
+                <div class="scope-box child" id="scope-child-inherit">
+                    <span class="scope-badge">Section A (Inherits)</span>
+                    <p style="font-size: 0.8125rem; margin-top: 0.5rem; color: var(--md-sys-color-on-surface-variant);">
+                        No local theme provider. Resolves from ancestor DOM.
+                    </p>
+                    <div class="resolved-info">
+                        resolved: <span id="out-child-a">...</span>
+                    </div>
+                    <button id="btn-resolve-a">inject(themeToken)(childA)</button>
+                </div>
+
+                <!-- Child Scope 2: Overrides theme (Shadowing) -->
+                <div class="scope-box child" id="scope-child-override">
+                    <span class="scope-badge">Section B (Shadows Theme)</span>
+                    <p style="font-size: 0.8125rem; margin-top: 0.5rem; color: var(--md-sys-color-on-surface-variant);">
+                        Provides <code>app:theme</code> = <strong>"emerald-green"</strong>
+                    </p>
+                    <div class="resolved-info">
+                        resolved: <span id="out-child-b">...</span>
+                    </div>
+                    <button id="btn-resolve-b">inject(themeToken)(childB)</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 1rem;">
+                <button class="tonal" id="btn-inject-all">injectAll(loggerToken)(childB) (Collects Chain)</button>
+            </div>
+        </div>
+
+        <div class="log-box">
+            <div class="log-header">RESOLUTION STREAM LOG</div>
+            <ul class="log-entries" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            createContext,
+            defineToken,
+            inject,
+            injectAll,
+            mount,
+            pipe,
+            provide,
+        } from '@sandlada/document-context'
+
+        const logList = document.getElementById('log-list')
+        function log(msg) {
+            const li = document.createElement('li')
+            li.className = 'log-entry'
+            li.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`
+            logList.prepend(li)
+        }
+
+        // Define typed DI tokens
+        const themeToken = defineToken('public')('app:theme')
+        const loggerToken = defineToken('public')('app:logger')
+
+        // 1. Root Blueprint: provides global theme and root logger
+        const rootBlueprint = pipe(
+            createContext({ name: 'RootContext' }),
+            provide(themeToken, () => ({ name: 'corporate-blue', mode: 'light' })),
+            provide(loggerToken, () => ({ tag: 'RootLogger', log: (m) => console.log('[Root]', m) })),
+        )
+
+        // 2. Child A Blueprint: inherits everything
+        const childABlueprint = pipe(
+            createContext({ name: 'ChildAContext' }),
+        )
+
+        // 3. Child B Blueprint: shadows themeToken with local override & adds section logger
+        const childBBlueprint = pipe(
+            createContext({ name: 'ChildBContext' }),
+            provide(themeToken, () => ({ name: 'emerald-green', mode: 'vibrant' })),
+            provide(loggerToken, () => ({ tag: 'SectionBLogger', log: (m) => console.log('[SectionB]', m) })),
+        )
+
+        const rootEl = document.getElementById('scope-root')
+        const childAEl = document.getElementById('scope-child-inherit')
+        const childBEl = document.getElementById('scope-child-override')
+
+        const rootSession = mount(rootBlueprint)(rootEl)
+        const childASession = mount(childABlueprint)(childAEl)
+        const childBSession = mount(childBBlueprint)(childBEl)
+
+        await Promise.all([rootSession.ready, childASession.ready, childBSession.ready])
+        log('All hierarchical sessions mounted on physical DOM.')
+
+        // Handlers
+        document.getElementById('btn-resolve-root').addEventListener('click', async () => {
+            const theme = await inject(themeToken)(rootEl)
+            document.getElementById('out-root').textContent = `theme="${theme.name}"`
+            log(`Root element resolved: <strong>${theme.name}</strong>`)
+        })
+
+        document.getElementById('btn-resolve-a').addEventListener('click', async () => {
+            const theme = await inject(themeToken)(childAEl)
+            document.getElementById('out-child-a').textContent = `theme="${theme.name}"`
+            log(`Section A resolved (walked up DOM tree): <strong>${theme.name}</strong>`)
+        })
+
+        document.getElementById('btn-resolve-b').addEventListener('click', async () => {
+            const theme = await inject(themeToken)(childBEl)
+            document.getElementById('out-child-b').textContent = `theme="${theme.name}"`
+            log(`Section B resolved (nearest-wins override): <strong>${theme.name}</strong>`)
+        })
+
+        document.getElementById('btn-inject-all').addEventListener('click', async () => {
+            const loggers = await injectAll(loggerToken)(childBEl)
+            const tags = loggers.map(l => l.tag).join(' -> ')
+            log(`injectAll found ${loggers.length} loggers along ancestry: <strong>${tags}</strong>`)
+        })
+    </script>
+</body>
+</html>

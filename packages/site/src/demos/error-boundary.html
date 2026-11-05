@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reactive Error Boundaries</title>
+    <link rel="stylesheet" href="./md3-theme.css" />
+    <style>
+        .container { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+        .error-banner {
+            display: none;
+            background-color: var(--md-sys-color-error-container);
+            border: 1px solid var(--md-sys-color-error);
+            color: var(--md-sys-color-on-error-container);
+            padding: 0.875rem 1rem;
+            border-radius: var(--md-sys-shape-corner-value-small);
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
+        .action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card" id="error-boundary-host">
+            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem;">Reactive Error Boundary Host</h3>
+            <p style="font-size: 0.8125rem; color: var(--md-sys-color-on-surface-variant); margin-bottom: 1rem;">
+                Blueprints use <code>onError</code> and sessions expose <code>errors$</code> to isolate failures.
+            </p>
+
+            <div class="error-banner" id="error-display">
+                <strong>Captured Error:</strong> <span id="error-msg"></span>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                State value: <strong id="state-val" style="font-family: var(--md-sys-typescale-mono-font); color: var(--md-sys-color-primary);">Valid: 10</strong>
+            </div>
+
+            <div class="action-row">
+                <button class="primary" id="btn-valid-update">Safe Update (+5)</button>
+                <button class="danger" id="btn-throw-update">Trigger State Error</button>
+                <button id="btn-clear-error">Dismiss Error Alert</button>
+            </div>
+        </div>
+
+        <div class="log-box">
+            <div class="log-header">ERROR STREAM LOG</div>
+            <ul class="log-entries" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            createContext,
+            mount,
+            onError,
+            pipe,
+            subscribe$,
+            update,
+        } from '@sandlada/document-context'
+
+        const logList = document.getElementById('log-list')
+        function log(msg, isErr = false) {
+            const li = document.createElement('li')
+            li.className = 'log-entry'
+            if (isErr) {
+                li.style.color = 'var(--md-sys-color-error)'
+            }
+            li.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`
+            logList.prepend(li)
+        }
+
+        const errorBanner = document.getElementById('error-display')
+        const errorMsg = document.getElementById('error-msg')
+        const stateValEl = document.getElementById('state-val')
+
+        // Blueprint with blueprint-level onError boundary
+        const boundaryBlueprint = pipe(
+            createContext({ value: 10 }),
+            onError(({ error }) => {
+                log(`<strong>onError hook intercepted:</strong> ${error.message}`, true)
+            }),
+        )
+
+        const hostEl = document.getElementById('error-boundary-host')
+        const session = mount(boundaryBlueprint)(hostEl)
+        await session.ready
+
+        // Subscribe to state stream
+        subscribe$((state) => {
+            stateValEl.textContent = `Valid: ${state.value}`
+            log(`State stream update: value = ${state.value}`)
+        })(session)
+
+        // Session-level errors$ observable
+        session.errors$.subscribe((err) => {
+            errorBanner.style.display = 'block'
+            errorMsg.textContent = err.message
+            log(`<strong>session.errors$ received:</strong> ${err.message}`, true)
+        })
+
+        document.getElementById('btn-valid-update').addEventListener('click', () => {
+            update((s) => ({ value: s.value + 5 }))(session)
+        })
+
+        document.getElementById('btn-throw-update').addEventListener('click', () => {
+            try {
+                update((s) => {
+                    throw new Error('ValidationError: value cannot exceed 100 or contains invalid data')
+                })(session)
+            } catch (e) {
+                // Curried update catches and routes to errors$
+            }
+        })
+
+        document.getElementById('btn-clear-error').addEventListener('click', () => {
+            errorBanner.style.display = 'none'
+        })
+    </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+---
+title: Reactive Counter & State
+description: Learn how to manage state and stream updates to physical DOM nodes using pure blueprints and RxJS.
+---
+
+import DemoSandbox from '../../../components/DemoSandbox.astro'
+
+This example demonstrates the fundamental two-phase lifecycle of `@sandlada/document-context`: composing an immutable blueprint in **Phase 1**, executing the mount boundary in **Phase 2**, and driving DOM updates through curried verbs and RxJS streams.
+
+<DemoSandbox
+    name="counter"
+    title="Reactive Counter & DOM Recipe"
+    minHeight={420}
+/>
+
+## Core Concepts Illustrated
+
+### 1. Two-Phase Execution Model
+The library strictly separates container definition from runtime DOM mounting:
+- **Phase 1 (Pure Blueprint)**: Operators such as `createContext` and `onMount` assemble an immutable blueprint tree. No DOM APIs or I/O operations are invoked during this phase.
+- **Phase 2 (Mount Boundary)**: `mount(blueprint)(hostElement)` binds the container to a physical DOM node, activates lifecycle listeners, and returns a synchronous `Session` handle whose completion is signaled by `await session.ready`.
+
+```ts
+import { createContext, mount, onMount, pipe } from '@sandlada/document-context'
+
+// Phase 1: Pure lazy blueprint
+const counterBlueprint = pipe(
+    createContext({ count: 0 }),
+    onMount(({ session }) => {
+        console.log('Session mounted on node:', session.host)
+    }),
+)
+
+// Phase 2: Mount boundary
+const host = document.getElementById('counter-box')!
+const session = mount(counterBlueprint)(host)
+await session.ready
+```
+
+### 2. Functional Data-Last Verbs
+State transformations and reads are performed using curried, data-last operators:
+- `update(fn)(session)`: Atomically transitions the session state using a pure reducer.
+- `read(selector)(session)`: Immediately extracts a synchronous snapshot from the session.
+- `subscribe$(observer)(session)`: Subscribes to the underlying RxJS `state$` stream to reactively render DOM updates.
+
+```ts
+import { read, subscribe$, update } from '@sandlada/document-context'
+
+// Render state changes into DOM
+subscribe$((state) => {
+    document.getElementById('count-val')!.textContent = String(state.count)
+})(session)
+
+// Trigger pure state updates
+const increment = update((s: { count: number }) => ({ count: s.count + 1 }))
+increment(session)
+
+// Read snapshot synchronously
+const currentCount = read((s: { count: number }) => s.count)(session)
+```
+
+### 3. Safe Teardown
+Calling `dispose(session)` cleans up internal subscriptions and transitions the lifecycle to `Disposed`. Subsequent calls to `update` on a disposed session safely and silently become no-ops without leaking memory or throwing unhandled errors.

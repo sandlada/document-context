@@ -27,10 +27,13 @@
         "starlight-versions": "^0.10.1",
         "typedoc": "^0.28.20",
         "typedoc-plugin-markdown": "^4.13.1",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+        "@sandlada/document-context": "workspace:*",
+        "rxjs": "^7.8.2"
     },
     "dependencies": {
         "@fontsource-variable/google-sans-code": "^5.3.1",
-        "@sandlada/material-design-css": "^3.0.0-20260611.b"
+        "@sandlada/material-design-css": "^3.0.1-20261004.a"
     }
 }
