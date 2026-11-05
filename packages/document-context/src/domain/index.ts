@@ -1,3 +1,74 @@
-export { type BlueprintHookEvent, collectAncestors, type ContextBlueprint, createServiceRegistry, createSessionState, definePrivateToken, defineToken, DocumentContextError, type DocumentContextErrorCode, type DocumentContextErrorOptions, type HookRegistration, isTerminal, type LifecycleEvent, nearestProvider, orderEntries, orderProviders, type PrivateToken, type ScopedEntry, type ScopeDirection, type ServiceLifecycle, type ServiceRegisterResult, type ServiceRegistration, type ServiceRegistry, type ServiceRegistryHandle, type ServiceToken, type Session, type SessionKind, type SessionState, type SessionStatus, type SessionTransitionEvent, type Token, transition, validateTokenName } from './model/index.js'
-export { type HostLifecycleEvent, type HostPort, isThenable, type MaybePromise, type SchedulerPort, type ScopeResolution, type ScopeTransportPort, type StorageError, type StorageKeywords, type StorageOptions, type StoragePort, type StorageResult } from './ports/index.js'
-export { applyUpdate, evictOldest, type HydrateOutcome, hydrateState, type HydrateStateInput, type HydrateStateResult, type HydrationStrategy, mountSession, type MountSessionInput, type MountSessionPorts, type MountSessionRecord, type MountSessionResult, resolveAllSync, resolveSync, type ResolveSyncInput, resolveViaTransport, resuscitateSession, type StateUpdater, type SuspendableRecord, type SuspendedHandle, type SuspendOptions, suspendSession, type SyncServiceStore, updateSession, watchOnce, type WatchOnceInput } from './usecases/index.js'
+/**
+ * Domain layer: pure models and port contracts.
+ *
+ * The domain layer never imports the application or the infrastructure layer and never touches a
+ * DOM global.
+ *
+ * @packageDocumentation
+ */
+
+export {
+    DocumentContextError,
+    isDocumentContextError,
+    toDocumentContextError,
+} from './model/errors'
+export type { DocumentContextErrorOptions, ErrorCode } from './model/errors'
+
+export {
+    defineToken,
+    isPrivateToken,
+    isPublicToken,
+    validateTokenName,
+} from './model/token'
+export type {
+    PrivateToken,
+    RegisteredService,
+    ServiceRegistry,
+    Token,
+    TokenLike,
+    TokenVisibility,
+} from './model/token'
+
+export { copyState, createContext, isPlainObject, pipe } from './model/blueprint'
+export type {
+    Blueprint,
+    BlueprintOperator,
+    Factory,
+    FactoryTools,
+    HookFn,
+    HookRegistration,
+    HookType,
+    ProviderLifecycle,
+    ProviderRegistration,
+} from './model/blueprint'
+
+export { lifecycleEventForStatus } from './model/lifecycle'
+export type {
+    DisposalReason,
+    LifecycleEvent,
+    LifecycleEventType,
+    SessionStatus,
+} from './model/lifecycle'
+
+export { isSession } from './model/session'
+export type {
+    Host,
+    HostEvent,
+    HostEventListener,
+    HostKind,
+    HostListenerOptions,
+    LateTarget,
+    MountTarget,
+    ServerHost,
+    Session,
+} from './model/session'
+
+export type { ConnectivityPort, HostAdapter, TokensPort } from './ports/host'
+export type { SchedulerPort } from './ports/scheduler'
+export type {
+    ContextAnnouncement,
+    ContextRequestDetail,
+    ProviderDeclaration,
+    ScopeTransportPort,
+} from './ports/scope-transport'
+export type { SsrPort } from './ports/ssr'

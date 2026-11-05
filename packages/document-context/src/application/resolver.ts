@@ -1,0 +1,461 @@
+/**
+ * Provider resolution.
+ *
+ * Resolution has two layers. Inside one application the scope chain is walked through the in-memory
+ * index; across applications the Context Protocol event bus carries the request. Nearest-wins holds
+ * in both layers.
+ */
+
+import { DocumentContextError } from '../domain/model/errors'
+import type { FactoryTools, ProviderRegistration } from '../domain/model/blueprint'
+import type { ContextRequestDetail } from '../domain/ports/scope-transport'
+import type { Host } from '../domain/model/session'
+import type { TokenLike } from '../domain/model/token'
+import type { ApplicationRuntime } from './context'
+import type { SessionRuntime } from './session'
+import { cacheFor, cacheKey } from './scopes/lifecycle'
+
+/** A provider group of one host, used by `injectAll`. */
+export interface MultiGroup {
+    /** The session owning the registrations. */
+    readonly session: SessionRuntime<any>
+    /** The registrations in blueprint order. */
+    readonly registrations: readonly ProviderRegistration[]
+}
+
+/** Where a single-value dependency was found. */
+export type SingleLocation =
+    | {
+          readonly kind: 'local'
+          readonly session: SessionRuntime<any>
+          readonly registration: ProviderRegistration
+      }
+    | { readonly kind: 'foreign' }
+    | { readonly kind: 'none' }
+
+/** Where a multi-value dependency was found. */
+export type MultiLocation =
+    | { readonly kind: 'local'; readonly groups: readonly MultiGroup[] }
+    | { readonly kind: 'foreign' }
+    | { readonly kind: 'none' }
+
+/**
+ * The display name of a token.
+ *
+ * @param token - The token.
+ * @returns The public name, or the debug name of a private token.
+ */
+export function tokenName(token: TokenLike): string {
+    return typeof token === 'string' ? token : token.name
+}
+
+/**
+ * The composed ancestor chain of a host, nearest first.
+ *
+ * @param host - The host to start from.
+ * @returns The chain, ending with the outermost host.
+ */
+export function chainFrom(host: Host): Host[] {
+    const chain: Host[] = []
+    const seen = new Set<Host>()
+    let current: Host | null = host
+    while (current !== null && !seen.has(current)) {
+        seen.add(current)
+        chain.push(current)
+        current = current.parent
+    }
+    return chain
+}
+
+/**
+ * The last single-value registration of a token in a blueprint.
+ *
+ * Later registrations override earlier ones. `multi: true` registrations are **not** single-value
+ * registrations: they accumulate for `injectAll` and never answer a single-value `inject`.
+ *
+ * @param session - The session.
+ * @param token - The token.
+ * @returns The registration, or `undefined`.
+ */
+export function lastSingleRegistration(
+    session: SessionRuntime<any>,
+    token: TokenLike,
+): ProviderRegistration | undefined {
+    let found: ProviderRegistration | undefined
+    for (const registration of session.blueprint.providers) {
+        if (registration.token === token && !registration.multi) {
+            found = registration
+        }
+    }
+    return found
+}
+
+/**
+ * Locate the nearest single-value provider of a token.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the resolution starts from.
+ * @param token - The token to resolve.
+ * @param origin - The session that started the resolution, if any.
+ * @returns Where the provider was found.
+ */
+export function locateSingle(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+    origin: SessionRuntime<any> | null,
+): SingleLocation {
+    if (origin !== null) {
+        const own = lastSingleRegistration(origin, token)
+        if (own !== undefined) {
+            return { kind: 'local', session: origin, registration: own }
+        }
+    }
+    const scope = runtime.ports.host.scope
+    for (const host of chainFrom(from)) {
+        const declaration = scope
+            .declarationsOf(host)
+            .find((entry) => entry.token === token && !entry.multi)
+        if (declaration === undefined) {
+            continue
+        }
+        if (declaration.owner !== runtime) {
+            return { kind: 'foreign' }
+        }
+        const session = runtime.sessions.get(host)
+        if (session === undefined) {
+            continue
+        }
+        if (session.status !== 'active' && session !== origin) {
+            continue
+        }
+        const registration = lastSingleRegistration(session, token)
+        if (registration === undefined) {
+            continue
+        }
+        return { kind: 'local', session, registration }
+    }
+    return { kind: 'none' }
+}
+
+/**
+ * Locate every multi-value provider of a token along the scope chain.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the resolution starts from.
+ * @param token - The token to resolve.
+ * @param origin - The session that started the resolution, if any.
+ * @returns Where the providers were found.
+ */
+export function locateMulti(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+    origin: SessionRuntime<any> | null,
+): MultiLocation {
+    const groups: MultiGroup[] = []
+    const scope = runtime.ports.host.scope
+    for (const host of chainFrom(from)) {
+        const declaration = scope
+            .declarationsOf(host)
+            .find((entry) => entry.token === token && entry.multi)
+        if (declaration === undefined) {
+            continue
+        }
+        if (declaration.owner !== runtime) {
+            return { kind: 'foreign' }
+        }
+        const session = runtime.sessions.get(host)
+        if (session === undefined) {
+            continue
+        }
+        if (session.status !== 'active' && session !== origin) {
+            continue
+        }
+        const registrations = session.blueprint.providers.filter(
+            (registration) => registration.token === token && registration.multi,
+        )
+        if (registrations.length === 0) {
+            continue
+        }
+        if (!groups.some((group) => group.session === session)) {
+            groups.push({ session, registrations })
+        }
+    }
+    if (groups.length > 0) {
+        return { kind: 'local', groups }
+    }
+    return { kind: 'none' }
+}
+
+/**
+ * Dispatch a `context-request` through the Context Protocol bus.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the request originates from.
+ * @param token - The token to request. Private tokens never leave the application.
+ * @param multi - Whether every provider should answer.
+ * @returns The values collected during the dispatch.
+ */
+export function dispatchRequest(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+    multi: boolean,
+): unknown[] {
+    if (typeof token !== 'string') {
+        return []
+    }
+    const values: unknown[] = []
+    const detail: ContextRequestDetail = {
+        context: token,
+        multi,
+        callback: (value: unknown) => {
+            values.push(value)
+        },
+    }
+    runtime.ports.host.scope.request(from, detail)
+    return values
+}
+
+/**
+ * Resolve the value of a provider registration, honouring its lifecycle.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session the registration belongs to.
+ * @param registration - The registration.
+ * @returns The value.
+ */
+export async function resolveProviderValue(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): Promise<unknown> {
+    if (registration.lifecycle === 'transient' || registration.lifecycle === 'prototype') {
+        return runFactory(runtime, session, registration)
+    }
+    const cache = cacheFor(runtime, session, registration.lifecycle)
+    const key = cacheKey(registration)
+    let slot = cache.get(key)
+    if (slot === undefined) {
+        slot = { resolved: false }
+        cache.set(key, slot)
+    }
+    if (slot.resolved) {
+        return slot.value
+    }
+    if (slot.promise === undefined) {
+        const promise = runFactory(runtime, session, registration)
+        slot.promise = promise
+        void promise.catch(() => {
+            if (cache.get(key) === slot) {
+                cache.delete(key)
+            }
+        })
+    }
+    return slot.promise
+}
+
+async function runFactory(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): Promise<unknown> {
+    const token = registration.token
+    if (session.resolving.has(token)) {
+        throw new DocumentContextError(
+            'CIRCULAR_DEPENDENCY',
+            `Circular dependency detected for token "${tokenName(token)}".`,
+            { details: { token: tokenName(token) } },
+        )
+    }
+    session.resolving.add(token)
+    try {
+        const resolved = new Map<TokenLike, unknown>()
+        for (const used of registration.uses) {
+            resolved.set(used, await resolveUsedValue(runtime, session, used))
+        }
+        const tools: FactoryTools = {
+            session,
+            use: <U>(requested: TokenLike<U>): U => {
+                if (!resolved.has(requested)) {
+                    throw new DocumentContextError(
+                        'UNKNOWN_SERVICE',
+                        `Token "${tokenName(requested)}" was not declared in "uses".`,
+                        { details: { token: tokenName(requested) } },
+                    )
+                }
+                return resolved.get(requested) as U
+            },
+        }
+        return await registration.factory(tools)
+    } finally {
+        session.resolving.delete(token)
+    }
+}
+
+/**
+ * Resolve a dependency declared through `uses`.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session that declares the dependency.
+ * @param token - The declared token.
+ * @returns The value.
+ * @throws A `DocumentContextError` with code `UNKNOWN_SERVICE` when the token cannot be resolved.
+ */
+export async function resolveUsedValue(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    token: TokenLike,
+): Promise<unknown> {
+    const own = lastSingleRegistration(session, token)
+    if (own !== undefined) {
+        return resolveProviderValue(runtime, session, own)
+    }
+    const location = locateSingle(runtime, session.adapterHost, token, session)
+    if (location.kind === 'local') {
+        return resolveProviderValue(runtime, location.session, location.registration)
+    }
+    if (location.kind === 'foreign') {
+        const values = dispatchRequest(runtime, session.adapterHost, token, false)
+        const first = values[0]
+        if (first !== undefined) {
+            return await first
+        }
+    }
+    throw new DocumentContextError(
+        'UNKNOWN_SERVICE',
+        `Cannot resolve token "${tokenName(token)}".`,
+        { details: { token: tokenName(token) } },
+    )
+}
+
+/**
+ * Check that every declared dependency of a blueprint can be resolved.
+ *
+ * A wrong declaration is an error, not a wait: the session refuses to initialize.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session that declares the dependencies.
+ * @throws A `DocumentContextError` with code `UNKNOWN_SERVICE` when a declared token cannot be
+ * resolved.
+ */
+export function assertUsesResolvable(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+): void {
+    for (const registration of session.blueprint.providers) {
+        for (const used of registration.uses) {
+            if (!isUsedResolvable(runtime, session, used)) {
+                throw new DocumentContextError(
+                    'UNKNOWN_SERVICE',
+                    `The declared dependency "${tokenName(used)}" cannot be resolved.`,
+                    { details: { token: tokenName(used) } },
+                )
+            }
+        }
+    }
+}
+
+function isUsedResolvable(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    token: TokenLike,
+): boolean {
+    if (lastSingleRegistration(session, token) !== undefined) {
+        return true
+    }
+    const scope = runtime.ports.host.scope
+    for (const host of chainFrom(session.adapterHost)) {
+        if (scope.declarationsOf(host).some((entry) => entry.token === token && !entry.multi)) {
+            return true
+        }
+        const ancestor = runtime.sessions.get(host)
+        if (ancestor === undefined) {
+            continue
+        }
+        if (lastSingleRegistration(ancestor, token) !== undefined) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Detect a cycle in the `uses` graph of a blueprint.
+ *
+ * @param providers - The provider registrations.
+ * @returns `true` when the graph contains a cycle.
+ */
+export function detectUsesCycle(providers: readonly ProviderRegistration[]): boolean {
+    const byToken = new Map<TokenLike, ProviderRegistration>()
+    for (const registration of providers) {
+        byToken.set(registration.token, registration)
+    }
+    const visiting = new Set<TokenLike>()
+    const visited = new Set<TokenLike>()
+    const walk = (token: TokenLike): boolean => {
+        if (visiting.has(token)) {
+            return true
+        }
+        if (visited.has(token)) {
+            return false
+        }
+        visiting.add(token)
+        const registration = byToken.get(token)
+        if (registration !== undefined) {
+            for (const used of registration.uses) {
+                if (byToken.has(used) && walk(used)) {
+                    return true
+                }
+            }
+        }
+        visiting.delete(token)
+        visited.add(token)
+        return false
+    }
+    for (const token of byToken.keys()) {
+        if (walk(token)) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Create the Context Protocol request handler of an active session.
+ *
+ * The handler answers `context-request` events for the public tokens this session provides. A
+ * single-value request sets `detail.resolved` so that farther providers skip it — nearest-wins
+ * never depends on `stopPropagation()`.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session that owns the handler.
+ * @returns The handler.
+ */
+export function createRequestHandler(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+): (detail: ContextRequestDetail) => void {
+    return (detail: ContextRequestDetail): void => {
+        const token = detail.context as TokenLike
+        if (detail.multi === true) {
+            const registrations = session.blueprint.providers.filter(
+                (registration) => registration.token === token && registration.multi,
+            )
+            for (const registration of registrations) {
+                detail.callback(resolveProviderValue(runtime, session, registration))
+            }
+            return
+        }
+        if (detail.resolved === true) {
+            return
+        }
+        const registration = lastSingleRegistration(session, token)
+        if (registration === undefined) {
+            return
+        }
+        detail.resolved = true
+        detail.callback(resolveProviderValue(runtime, session, registration))
+    }
+}

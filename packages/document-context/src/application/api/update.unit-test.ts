@@ -1,79 +1,93 @@
 import { describe, expect, it } from 'vitest'
-import { createSessionState } from '../../domain/index.js'
-import type { MountSessionRecord, Session } from '../../domain/index.js'
-import { createUpdate } from './update.js'
-import type { UpdateContext } from './update.js'
+import { createContext } from '../../domain/model/blueprint'
+import { createTestApplication } from '../testing/fakes'
 
-type AnyRecord = MountSessionRecord<Record<PropertyKey, unknown>>
-
-const setup = (): {
-    readonly ctx: UpdateContext
-    readonly session: <S extends Record<PropertyKey, unknown>>(initial: S) => {
-        readonly facade: Session<S, unknown>
-        readonly record: MountSessionRecord<S>
-    }
-} => {
-    const records = new WeakMap<object, AnyRecord>()
-    const ctx: UpdateContext = { records }
-    const session = <S extends Record<PropertyKey, unknown>>(initial: S): {
-        readonly facade: Session<S, unknown>
-        readonly record: MountSessionRecord<S>
-    } => {
-        const store = createSessionState<S>({ ...initial })
-        const record = {
-            status: 'mounted',
-            sessionState: store,
-        } as unknown as MountSessionRecord<S>
-        const facade = { state$: store.state$ } as unknown as Session<S, unknown>
-        records.set(facade, record as unknown as AnyRecord)
-        return { facade, record }
-    }
-    return { ctx, session }
+interface CounterState {
+    count: number
+    label?: string
 }
 
-describe('update state push', () => {
-    it('shallow-merges a partial and returns true', async () => {
-        const { ctx, session } = setup()
-        const update = createUpdate(ctx)
-        const { facade, record } = session({ count: 0, label: 'a' })
-        expect(update({ count: 1 })(facade)).toBe(true)
-        expect(record.sessionState.getSnapshot()).toEqual({ count: 1, label: 'a' })
+describe('update', () => {
+    it('[LC #12] starting 期間的 update 依序重放', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext<CounterState>({ count: 0 }))(adapter.createHost())
+
+        app.update((state: CounterState) => ({ count: state.count + 1 }))(session)
+        app.update((state: CounterState) => ({ count: state.count + 10 }))(session)
+
+        await session.ready
+
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(11)
     })
 
-    it('applies an updater function over the previous snapshot', async () => {
-        const { ctx, session } = setup()
-        const update = createUpdate(ctx)
-        const { facade, record } = session({ count: 1 })
-        expect(update((prev: { count: number }) => ({ count: prev.count + 1 }))(facade)).toBe(true)
-        expect(record.sessionState.getSnapshot()).toEqual({ count: 2 })
+    it('[API #3] update 整份替換並刪除未寫回的鍵', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(
+            createContext({ count: 0, label: 'first' } as CounterState),
+        )(adapter.createHost())
+        await session.ready
+
+        app.update((state: CounterState) => ({ count: state.count + 1 }))(session)
+
+        expect(app.read((state: CounterState) => state)(session)).toEqual({ count: 1 })
     })
 
-    it('replaces nested objects wholesale (no deep merge)', async () => {
-        const { ctx, session } = setup()
-        const update = createUpdate(ctx)
-        const { facade, record } = session({ nested: { a: 1, b: 2 } })
-        expect(update({ nested: { a: 9 } } as Partial<{ nested: { a: number, b: number } }>)(facade)).toBe(true)
-        expect(record.sessionState.getSnapshot()).toEqual({ nested: { a: 9 } })
+    it('[API #3] disposed 會話的 update 回傳 false', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext({ count: 0 }))(adapter.createHost())
+        await session.ready
+        app.dispose(session)
+
+        expect(app.update((state: CounterState) => ({ count: state.count + 1 }))(session)).toBe(
+            false,
+        )
     })
 
-    it('returns false and never invokes the updater once poisoned (disposed silent no-op)', async () => {
-        const { ctx, session } = setup()
-        const update = createUpdate(ctx)
-        const { facade, record } = session({ count: 0 })
-        record.sessionState.poison()
-        let invoked = false
-        expect(update(() => {
-            invoked = true
-            return { count: 1 }
-        })(facade)).toBe(false)
-        expect(invoked).toBe(false)
-        expect(record.sessionState.getSnapshot()).toEqual({ count: 0 })
+    it('[API #4] updater 拋錯原樣外拋且狀態不變', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext({ count: 0 }))(adapter.createHost())
+        await session.ready
+
+        expect(() =>
+            app.update((_state: CounterState) => {
+                throw new Error('boom')
+            })(session),
+        ).toThrow('boom')
+
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(0)
     })
 
-    it('returns false for an unknown session handle (treated as dead)', async () => {
-        const { ctx } = setup()
-        const update = createUpdate(ctx)
-        const stranger = { state$: null } as unknown as Session<{ count: number }, unknown>
-        expect(update({ count: 1 })(stranger)).toBe(false)
+    it('[API #8] suspended 期間仍可更新且訂閱者收到推送', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({ count: 0 }), { token: 'app:suspend' })(host)
+        await session.ready
+
+        const seen: number[] = []
+        app.subscribe$((state: CounterState) => seen.push(state.count))(session)
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('suspended')
+
+        app.update((state: CounterState) => ({ count: state.count + 1 }))(session)
+
+        expect(seen).toEqual([0, 1])
+    })
+
+    it('[RX #2] 推送同步發生且引用相同不推送', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext({ count: 0 }))(adapter.createHost())
+        await session.ready
+
+        const seen: number[] = []
+        app.subscribe$((state: CounterState) => seen.push(state.count))(session)
+
+        const snapshot = app.read((state: CounterState) => state)(session)
+        app.update(() => snapshot)(session)
+        expect(seen).toEqual([0])
+
+        app.update((state: CounterState) => ({ count: 1 }))(session)
+        expect(seen).toEqual([0, 1])
     })
 })

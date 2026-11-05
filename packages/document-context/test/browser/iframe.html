@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Document Context Iframe Target</title>
+    </head>
+    <body>
+        <div id="iframe-root"></div>
+        <script type="module">
+            import * as DC from '/src/index.ts'
+            window.DocumentContext = DC
+            window.__DC_READY__ = true
+        </script>
+    </body>
+</html>

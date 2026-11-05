@@ -1,143 +1,172 @@
 /**
- * Serializable, SSR-safe token system for service resolution and keyed
- * session identity.
+ * Token identity.
  *
- * Public tokens are branded strings: their runtime is a plain string, so
- * equality is string equality across bundles, realms, and documents with no
- * global registry. Private tokens are frozen branded objects: equality is
- * reference equality within one realm and they can never serialize.
+ * A **public** token is a plain `namespace:name` string at runtime. Two scripts that each call
+ * `defineToken('public')('app:theme')` obtain the very same string, so cross-bundle resolution
+ * never needs a shared module instance.
  *
- * This module is pure: no DOM access, no timers, no module-global mutable
- * state. It runs in a plain Node environment.
+ * A **private** token is an object reference. It only works inside one realm and one module graph.
  */
-import { DocumentContextError } from './errors.js'
 
-declare const ServiceType: unique symbol
+import { DocumentContextError } from './errors'
+
+declare const tokenBrand: unique symbol
+const privateTokenBrand: unique symbol = Symbol('document-context.private-token')
 
 /**
- * Public service token: a branded string whose runtime is the name itself.
- * The phantom type carries the service type for typed injection; it never
- * affects runtime equality.
+ * A public token.
+ *
+ * At runtime this is the plain token name. The brand only exists so that TypeScript can carry the
+ * service type; it is erased at build time.
  */
-export type ServiceToken<T> = string & { readonly [ServiceType]?: T }
-
-declare const PrivateServiceType: unique symbol
+export type Token<T> = string & { readonly [tokenBrand]: T }
 
 /**
- * Private token: a frozen branded object. `name` is debug-only metadata; it
- * is exempt from namespace validation and never constitutes identity.
+ * A private token.
+ *
+ * Identity is reference equality. The brand property is not exported, so a private token can only be
+ * produced by {@link defineToken}.
  */
 export interface PrivateToken<T> {
-    readonly [PrivateServiceType]?: T
-    /** Debug-only label; not identity, never serialized. */
+    /** Debug-only label. Not validated, never used for resolution. */
     readonly name: string
+    readonly [privateTokenBrand]: T
 }
 
-/**
- * Union accepted by ports and signatures. Keyed and serialized paths accept
- * only the public string form; private tokens are rejected there.
- *
- * `unknown` (rather than `any`) keeps assignability one-directional: a
- * `ServiceToken<User>` fits, but a bare `Token` does not silently become one.
- */
-export type Token = ServiceToken<unknown> | PrivateToken<unknown> | string
+/** Any token accepted by `provide` / `inject`. */
+export type TokenLike<T = unknown> = Token<T> | PrivateToken<T>
+
+/** Visibility of a token definition. */
+export type TokenVisibility = 'public' | 'private'
 
 /**
- * Open interface for declaration merging. Consumers augment it to give
- * string-literal tokens static types alongside `ServiceToken<T>`.
+ * Augment this interface to give bare-string injections a type.
+ *
+ * @example
+ * ```ts
+ * declare module '@sandlada/document-context' {
+ *     interface ServiceRegistry {
+ *         'app:theme': 'dark' | 'light'
+ *     }
+ * }
+ * ```
  */
 export interface ServiceRegistry {}
 
-const TOKEN_PATTERN = /^[A-Za-z0-9._:/-]+$/
-const TOKEN_MAX_LENGTH = 256
-const TOKEN_BLOCKED_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'prototype', 'constructor'])
-const TOKEN_RESERVED_NAMESPACES: ReadonlySet<string> = new Set(['__system__', '__document-context__'])
+/** The service type registered for a token name, or `unknown` when the name is not registered. */
+export type RegisteredService<K extends string> = K extends keyof ServiceRegistry
+    ? ServiceRegistry[K]
+    : unknown
+
+const TOKEN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*:[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /**
- * Single source of truth for public token-name validation. Shared by
- * `defineToken` and keyed session identity normalization: both reject with
- * `TOKEN_INVALID` carrying `{token, reason}` details.
+ * Validate a public token name.
  *
- * Rules: `namespace:name` with at least two non-empty `:`-separated
- * segments, charset `[A-Za-z0-9._:/-]`, length at most 256, no
- * `__proto__`/`prototype`/`constructor` segment, and no reserved first
- * segment (`__system__`/`__document-context__`).
- *
- * @param name Candidate public token name (bare strings included).
- * @returns Nothing on success.
- * @throws DocumentContextError with code `TOKEN_INVALID` on any violation.
- * @example
- * ```ts
- * import { validateTokenName } from './token.js'
- *
- * validateTokenName('app:user')
- * ```
+ * @param name - The candidate name.
+ * @throws {@link DocumentContextError} with code `TOKEN_INVALID` when the name is not `namespace:name`.
  */
 export function validateTokenName(name: string): void {
-    if (typeof name !== 'string') {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'not-a-string' })
-    }
-    if (name.length === 0) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'empty' })
-    }
-    if (name.length > TOKEN_MAX_LENGTH) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'too-long' })
-    }
-    if (!TOKEN_PATTERN.test(name)) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'invalid-charset' })
-    }
-    const segments = name.split(':')
-    if (segments.length < 2) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'missing-namespace' })
-    }
-    if (segments.some((segment) => segment.length === 0)) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'empty-segment' })
-    }
-    if (segments.some((segment) => TOKEN_BLOCKED_SEGMENTS.has(segment))) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'blacklisted-segment' })
-    }
-    const first = segments[0]
-    if (first !== undefined && TOKEN_RESERVED_NAMESPACES.has(first)) {
-        throw new DocumentContextError('TOKEN_INVALID', { token: name, reason: 'reserved-namespace' })
+    if (typeof name !== 'string' || !TOKEN_NAME_PATTERN.test(name)) {
+        throw new DocumentContextError(
+            'TOKEN_INVALID',
+            `Invalid token name ${JSON.stringify(name)}: expected "namespace:name".`,
+            { details: { name } },
+        )
     }
 }
 
 /**
- * Defines a public token. Pure and idempotent: defining the same name twice
- * (including from scattered bundles) is not an error and yields equal
- * tokens, because equality is string equality.
+ * Whether the given value is a public token (a `namespace:name` string).
  *
- * @param name Public token name; runtime-validated by `validateTokenName`.
- * @returns The token, whose runtime is the name string itself.
- * @throws DocumentContextError with code `TOKEN_INVALID` on any violation.
  * @example
  * ```ts
- * import { defineToken } from './token.js'
+ * import { defineToken, isPublicToken } from '@sandlada/document-context'
  *
- * interface User { id: string }
- * const userToken = defineToken<User>('app:user')
+ * const themeToken = defineToken<'light' | 'dark'>('public')('app:theme')
+ * console.log(isPublicToken(themeToken)) // true
+ * console.log(isPublicToken('invalid-bare-token')) // false
  * ```
+ *
+ * @param value - The value to test.
+ * @returns `true` when `value` is a string shaped like a public token name.
  */
-export function defineToken<T = unknown>(name: string): ServiceToken<T> {
-    validateTokenName(name)
-    return name as ServiceToken<T>
+export function isPublicToken(value: unknown): value is Token<unknown> {
+    return typeof value === 'string' && TOKEN_NAME_PATTERN.test(value)
 }
 
 /**
- * Defines a private token. The name is debug-only: it skips namespace
- * validation entirely and never participates in serialization. Each call
- * yields a distinct frozen object, so identity is reference equality within
- * this realm.
+ * Whether the given value is a private token.
  *
- * @param name Debug-only label with no validation and no identity role.
- * @returns A new frozen private token, distinct from every other.
  * @example
  * ```ts
- * import { definePrivateToken } from './token.js'
+ * import { defineToken, isPrivateToken } from '@sandlada/document-context'
  *
- * const secret = definePrivateToken('app:session-secret')
+ * const secretToken = defineToken<{ secret: string }>('private')('auth:secret')
+ * console.log(isPrivateToken(secretToken)) // true
+ * console.log(isPrivateToken('app:theme')) // false
  * ```
+ *
+ * @param value - The value to test.
+ * @returns `true` when `value` was produced by `defineToken('private')`.
  */
-export function definePrivateToken<T = unknown>(name: string): PrivateToken<T> {
-    return Object.freeze({ name }) as PrivateToken<T>
+export function isPrivateToken(value: unknown): value is PrivateToken<unknown> {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'name' in value &&
+        privateTokenBrand in (value as Record<symbol, unknown>)
+    )
+}
+
+/**
+ * Define a token.
+ *
+ * Visibility comes first, the name comes last. Omitting the visibility yields a public token.
+ * Public tokens are strings matched across multiple script bundles. Private tokens are unique
+ * object references confined to a single module realm.
+ *
+ * @example
+ * ```ts
+ * import { defineToken, createContext, pipe, provide, mount, inject } from '@sandlada/document-context'
+ *
+ * interface LoggerService {
+ *     log(msg: string): void
+ * }
+ *
+ * // Public token (accessible across micro-frontends / bundles via 'app:logger')
+ * const loggerToken = defineToken<LoggerService>('public')('app:logger')
+ *
+ * // Private token (confined within this realm)
+ * const internalSecretToken = defineToken<{ key: string }>('private')('auth:internal-key')
+ *
+ * const blueprint = pipe(
+ *     createContext({}),
+ *     provide(loggerToken, () => ({ log: (m) => console.log(`[APP]: ${m}`) })),
+ *     provide(internalSecretToken, () => ({ key: 'secret_123' })),
+ * )
+ *
+ * const host = document.getElementById('app')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const logger = await inject(loggerToken)(host)
+ * logger.log('System ready')
+ * ```
+ *
+ * @param visibility - `'public'` (default) or `'private'`.
+ * @returns A function that takes the token name and returns the token.
+ */
+export function defineToken<T>(visibility?: 'public'): (name: string) => Token<T>
+export function defineToken<T>(visibility: 'private'): (name: string) => PrivateToken<T>
+export function defineToken<T>(
+    visibility: TokenVisibility = 'public',
+): (name: string) => Token<T> | PrivateToken<T> {
+    return (name: string): Token<T> | PrivateToken<T> => {
+        if (visibility === 'private') {
+            return { name, [privateTokenBrand]: undefined as unknown as T }
+        }
+        validateTokenName(name)
+        return name as Token<T>
+    }
 }

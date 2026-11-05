@@ -6,7 +6,6 @@ export default defineConfig({
         'domain/index': 'src/domain/index.ts',
         'application/index': 'src/application/index.ts',
         'infrastructure/dom/index': 'src/infrastructure/dom/index.ts',
-        'infrastructure/storage/index': 'src/infrastructure/storage/index.ts',
         'infrastructure/ssr/index': 'src/infrastructure/ssr/index.ts'
     },
     format: ['esm'],

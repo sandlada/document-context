@@ -102,7 +102,11 @@ jobs:
           test -f $PKG/build/index.js
           test -f $PKG/build/index.d.ts
           test -f $PKG/build/domain/index.js
+          test -f $PKG/build/domain/index.d.ts
           test -f $PKG/build/application/index.js
+          test -f $PKG/build/application/index.d.ts
           test -f $PKG/build/infrastructure/dom/index.js
-          test -f $PKG/build/infrastructure/storage/index.js
+          test -f $PKG/build/infrastructure/dom/index.d.ts
           test -f $PKG/build/infrastructure/ssr/index.js
+          test -f $PKG/build/infrastructure/ssr/index.d.ts
+          test ! -e $PKG/build/infrastructure/storage

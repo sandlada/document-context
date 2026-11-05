@@ -1,290 +1,629 @@
 /**
- * Package composition root: the default wired application plus the full
- * public verb surface.
+ * `@sandlada/document-context` — the root entry.
  *
- * This module assembles one shared {@link app} via `createApplication` with
- * infrastructure-owned ports: a lazily constructed DOM adapter (host
- * normalization, scheduler, scope transport, keyed-identity tokens), the
- * lazy storage keyword registry, and a per-request-safe SSR adapter (shared
- * null host, ambient-document payload resolver degrading to null, escaping
- * serializer). Every verb except `mount`/`mountSync` passes through by
- * reference; the two mount verbs wrap the bound originals to project session
- * lifecycle onto the host through `bindSessionAnnouncements`, synthesizing
- * the already-fired initial entry so cross-bundle receivers observe the first
- * mount exactly like a resuscitation. Announcement work is best-effort and
- * never breaks a mount.
- *
- * SSR-safe import: module evaluation performs no DOM access, installs no
- * listeners, and starts no timers. The DOM adapter is constructed on first
- * host use (`ensureDom`); storage backends resolve per keyword on first
- * `resolve()`; the payload resolver reads the ambient document per call and
- * degrades to null without one. Importing this entry in plain Node (no
- * `document`) must not throw; only host-bound calls require a DOM.
- */
-
-import { createApplication } from './application/index.js'
-import type { Application, ApplicationPorts, HostAdapter, SsrAdapter } from './application/index.js'
-import type { ContextBlueprint, HostPort, SchedulerPort, ScopeTransportPort, Session } from './domain/index.js'
-import type { MountOptions } from './application/api/mount.js'
-import { createDomAdapter } from './infrastructure/dom/index.js'
-import type { DomAdapter } from './infrastructure/dom/index.js'
-import { bindSessionAnnouncements, CONTEXT_MOUNT_EVENT } from './infrastructure/dom/attach.js'
-import { createStorageAdapters } from './infrastructure/storage/index.js'
-import { createNullHost } from './infrastructure/ssr/null-host.js'
-import { createPayloadResolver } from './infrastructure/ssr/payload-resolver.js'
-import type { PayloadDocument } from './infrastructure/ssr/payload-resolver.js'
-import { serialize as ssrSerialize } from './infrastructure/ssr/serialize.js'
-
-export { createApplication }
-export type { Application, HostAdapter, MountOptions, SsrAdapter }
-export type { LateTarget } from './application/index.js'
-/** Defines a namespaced public token (pure, idempotent). */
-export { defineToken, definePrivateToken } from './domain/index.js'
-export type { ServiceToken, PrivateToken, Token, ServiceRegistry } from './domain/index.js'
-
-/**
- * Lazily constructed DOM adapter backing the shared application. Creation
- * waits for the first host-bound call so module import stays DOM-free; every
- * later call reuses the same adapter (and its centralized observer).
- *
- * @returns The shared DOM adapter.
- */
-const ensureDom = (() => {
-    let adapter: DomAdapter | null = null
-    return (): DomAdapter => {
-        if (adapter === null) {
-            adapter = createDomAdapter()
-        }
-        return adapter
-    }
-})()
-
-/**
- * Host adapter bridging the DOM bundle into the application port shape.
- * Normalization, scheduling, and scope transport delegate to the lazy DOM
- * adapter; keyed-identity I/O re-resolves the native through the adapter
- * cache (natives here always originate from a live host, so normalization
- * cannot fail on these paths).
- */
-const host: HostAdapter = {
-    toHost: (node: unknown): HostPort => ensureDom().toHost(node) as unknown as HostPort,
-    get scheduler(): SchedulerPort {
-        return ensureDom().scheduler
-    },
-    get scopeTransport(): ScopeTransportPort {
-        return ensureDom().scopeTransport
-    },
-    tokens: {
-        read: (native: unknown): string | null => {
-            const adapter = ensureDom()
-            return adapter.tokens.read(adapter.toHost(native))
-        },
-        write: (native: unknown, token: string | null): void => {
-            const adapter = ensureDom()
-            adapter.tokens.write(adapter.toHost(native), token)
-        },
-    },
-}
-
-/**
- * SSR adapter for the shared application: the shared connectionless null
- * host, a payload resolver bound per call to the ambient document (null
- * without one, never throwing), and the escaping session serializer.
- */
-const ssr: SsrAdapter = {
-    nullHost: createNullHost(),
-    payloadResolver: (token: string | null): unknown | null => {
-        try {
-            const candidate = (globalThis as { readonly document?: unknown }).document
-            if (typeof candidate !== 'object' || candidate === null) {
-                return null
-            }
-            return createPayloadResolver(candidate as PayloadDocument)(token)
-        } catch {
-            return null
-        }
-    },
-    serialize: ssrSerialize,
-}
-
-/**
- * Ports wiring the shared application to its infrastructure. Storage builds
- * no backend until the first keyword `resolve()`; host and document access
- * stay lazy per the adapters above.
- */
-const ports: ApplicationPorts = {
-    host,
-    storage: createStorageAdapters(),
-    ssr,
-}
-
-/**
- * Shared wired application: every verb bound to one context over the ports
- * above. Prefer the individual verb exports for tree-shaking; reach for
- * `app` only when the assembled surface itself must be passed around.
+ * The root entry carries the Phase 1 operators and the Phase 2 verbs of a **default application**.
+ * The default application is assembled lazily on the first Phase 2 call, so importing this module
+ * never touches a DOM global.
  *
  * @example
  * ```ts
- * import { app } from '@sandlada/document-context'
+ * import { createContext, defineToken, mount, pipe, provide, subscribe$, update } from '@sandlada/document-context'
  *
- * const blueprint = app.pipe(app.createContext({ count: 0 }))
- * const session = await app.mount(blueprint)(document.getElementById('app-box'))
+ * const countToken = defineToken<{ inc(): void }>('public')('app:count')
+ * const blueprint = pipe(
+ *     createContext({ count: 0 }),
+ *     provide(countToken, ({ session }) => ({
+ *         inc: () => update((state) => ({ ...state, count: state.count + 1 }))(session),
+ *     })),
+ * )
+ *
+ * const session = mount(blueprint)(document.getElementById('app')!)
+ * await session.ready
+ * subscribe$((state) => { console.log(state.count) })(session)
  * ```
  */
-export const app: Application = createApplication(ports)
+
+import type { Observable, Subscription } from 'rxjs'
+import type { Blueprint } from './domain/model/blueprint'
+import type { LateTarget, Session } from './domain/model/session'
+import type { RegisteredService, TokenLike } from './domain/model/token'
+import type { Application, AttachConfig, AttachHandle } from './application/application'
+import { createApplication } from './application/application'
+import type { MountOptions } from './application/api/mount'
+import type { InjectOptions } from './application/api/inject'
+import type { InjectAllOptions } from './application/api/inject-all'
+import { createDomHostAdapter, type DomHost } from './infrastructure/dom/host-adapter'
+
+// ---------------------------------------------------------------------------
+// Phase 1 — pure blueprint operators. They are not bound to any application.
+// ---------------------------------------------------------------------------
+
+export { copyState, createContext, isPlainObject, pipe } from './domain/model/blueprint'
+export type {
+    Blueprint,
+    BlueprintOperator,
+    Factory,
+    FactoryTools,
+    HookFn,
+    HookRegistration,
+    HookType,
+    ProviderLifecycle,
+    ProviderRegistration,
+} from './domain/model/blueprint'
+
+export { defineToken, isPrivateToken, isPublicToken, validateTokenName } from './domain/model/token'
+export type {
+    PrivateToken,
+    RegisteredService,
+    ServiceRegistry,
+    Token,
+    TokenLike,
+    TokenVisibility,
+} from './domain/model/token'
+
+export { provide } from './application/api/provide'
+export type { ProvideOptions } from './application/api/provide'
+export { onAdopt, onDispose, onMount, onResume, onSuspend } from './application/api/hooks'
+export { merge } from './application/api/merge'
+
+export { DocumentContextError, isDocumentContextError } from './domain/model/errors'
+export type { ErrorCode } from './domain/model/errors'
+
+export { isSession } from './domain/model/session'
+export type {
+    Host,
+    HostEvent,
+    HostEventListener,
+    HostKind,
+    HostListenerOptions,
+    LateTarget,
+    MountTarget,
+    ServerHost,
+    Session,
+} from './domain/model/session'
+
+export type {
+    DisposalReason,
+    LifecycleEvent,
+    LifecycleEventType,
+    SessionStatus,
+} from './domain/model/lifecycle'
+
+export type {
+    ConnectivityPort,
+    HostAdapter,
+    SchedulerPort,
+    ScopeTransportPort,
+    SsrPort,
+    TokensPort,
+} from './domain'
+
+// ---------------------------------------------------------------------------
+// Phase 2 — verbs bound to the default application.
+// ---------------------------------------------------------------------------
+
+let defaultApplication: Application<DomHost, Element> | null = null
 
 /**
- * Projects one session's lifecycle onto its host through the normative
- * `context-mount` / `context-dispose` channel and synthesizes the initial
- * entry: binding happens after the mount verb resolves, by which time the
- * `mounted` (or `resuscitated`, or silently parked `suspended`) entry has
- * already fired on the session stream. Suspended parks and disposed sessions
- * synthesize nothing; live sessions announce `context-mount` once, and the
- * binding carries every later entry. Best-effort: any failure (no DOM, no
- * `CustomEvent`, unreadable native, throwing dispatch) skips silently and
- * never breaks the mount.
+ * The default application.
  *
- * @param session Freshly mounted session to announce.
+ * It is created on the first Phase 2 call so that importing this module never touches the DOM.
+ *
+ * @example
+ * ```ts
+ * import { getDefaultApplication } from '@sandlada/document-context'
+ *
+ * const app = getDefaultApplication()
+ * console.log(typeof app.mount) // 'function'
+ * ```
+ *
+ * @returns The default application.
  */
-const announceSession = (session: Session): void => {
-    try {
-        bindSessionAnnouncements(session)
-        if (session.isDisposed || session.isSuspended) {
-            return
-        }
-        if (typeof CustomEvent !== 'function') {
-            return
-        }
-        let native: unknown = null
-        try {
-            native = session.host.native()
-        } catch {
-            return
-        }
-        if (typeof native !== 'object' || native === null) {
-            return
-        }
-        const dispatchEvent = (native as { readonly dispatchEvent?: unknown }).dispatchEvent
-        if (typeof dispatchEvent !== 'function') {
-            return
-        }
-        try {
-            (dispatchEvent as (event: Event) => void).call(
-                native,
-                new CustomEvent(CONTEXT_MOUNT_EVENT, {
-                    detail: { token: session.token },
-                    bubbles: true,
-                    composed: true,
-                    cancelable: false,
-                }),
-            )
-        } catch {
-            // Announcements are best-effort: the session already transitioned.
-        }
-    } catch {
-        // Announcement wiring must never break a mount.
+export function getDefaultApplication(): Application<DomHost, Element> {
+    if (defaultApplication === null) {
+        defaultApplication = createApplication<DomHost, Element>({ host: createDomHostAdapter() })
     }
+    return defaultApplication
 }
 
 /**
- * Mounts a blueprint on a host; resolves once hydrated and eager-ready, then
- * announces the session on the host (best-effort, never breaking).
+ * Replace the default application.
  *
- * @param blueprint Pure blueprint declaring seed state and providers.
- * @param options Optional keyed identity, TTL, observer, conflict, SSR, and signal.
- * @returns Data-last mount mapping an element to its session promise.
  * @example
  * ```ts
- * import { createContext, mount, pipe } from '@sandlada/document-context'
+ * import { setDefaultApplication, getDefaultApplication, createApplication, createDomHostAdapter } from '@sandlada/document-context'
  *
- * const session = await mount(pipe(createContext({ count: 0 })))(document.getElementById('app-box'))
+ * // Reset or customize the composition root
+ * setDefaultApplication(createApplication({ host: createDomHostAdapter() }))
+ * const app = getDefaultApplication()
  * ```
+ *
+ * @param application - The application to use, or `null` to rebuild it on the next call.
  */
-export const mount = <S extends Record<PropertyKey, unknown>, Host = HTMLElement>(
-    blueprint: ContextBlueprint<S>,
+export function setDefaultApplication(application: Application<DomHost, Element> | null): void {
+    defaultApplication = application
+}
+
+/**
+ * Mount a blueprint on a host.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, update, read } from '@sandlada/document-context'
+ *
+ * interface CounterState {
+ *     count: number
+ * }
+ * const counterBlueprint = createContext<CounterState>({ count: 10 })
+ *
+ * const host = document.getElementById('counter-container')!
+ * const session = mount(counterBlueprint, { token: 'app:counter-widget' })(host)
+ * await session.ready
+ *
+ * update<CounterState>((s) => ({ count: s.count + 1 }))(session)
+ * console.log(read<CounterState, number>((s) => s.count)(session)) // 11
+ * ```
+ *
+ * @param blueprint - The blueprint to mount.
+ * @param options - The mount options.
+ * @returns A function that takes the mount target and returns the session.
+ */
+export function mount<S>(
+    blueprint: Blueprint<S>,
     options?: MountOptions,
-): ((element: Host) => Promise<Session<S, Host>>) => {
-    const run = app.mount<S, Host>(blueprint, options)
-    return async (element: Host): Promise<Session<S, Host>> => {
-        const session = await run(element)
-        announceSession(session as unknown as Session)
-        return session
-    }
+): (target: Element) => Session<S, DomHost> {
+    return getDefaultApplication().mount(blueprint, options)
 }
 
 /**
- * Mounts synchronously; throws when async work is not ready, then announces
- * the session on the host (best-effort, never breaking).
+ * Resolve a single dependency.
  *
- * @param blueprint Pure blueprint declaring seed state and providers.
- * @param options Optional keyed identity, TTL, observer, conflict, and SSR payload.
- * @returns Data-last mount mapping an element to its session.
  * @example
  * ```ts
- * import { createContext, mountSync, pipe } from '@sandlada/document-context'
+ * import { createContext, defineToken, pipe, provide, mount, inject } from '@sandlada/document-context'
  *
- * const session = mountSync(pipe(createContext({ count: 0 })))(document.getElementById('app-box'))
+ * interface LoggerService {
+ *     log(msg: string): void
+ * }
+ * const loggerToken = defineToken<LoggerService>('public')('app:logger')
+ *
+ * const blueprint = pipe(
+ *     createContext({}),
+ *     provide(loggerToken, () => ({ log: (m) => console.log(`[LOG]: ${m}`) })),
+ * )
+ *
+ * const host = document.getElementById('app-root')!
+ * const childButton = document.getElementById('submit-btn')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * // Child component resolves service from ancestor hierarchy
+ * const logger = await inject(loggerToken)(childButton)
+ * logger.log('Button clicked')
  * ```
+ *
+ * @param token - The token to resolve.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
  */
-export const mountSync = <S extends Record<PropertyKey, unknown>, Host = HTMLElement>(
-    blueprint: ContextBlueprint<S>,
-    options?: MountOptions,
-): ((element: Host) => Session<S, Host>) => {
-    const run = app.mountSync<S, Host>(blueprint, options)
-    return (element: Host): Session<S, Host> => {
-        const session = run(element)
-        announceSession(session as unknown as Session)
-        return session
-    }
+export function inject<T>(token: TokenLike<T>, options?: InjectOptions): (target: LateTarget<Element>) => Promise<T>
+/**
+ * Resolve a single dependency.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function inject<K extends string>(
+    token: K,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Promise<RegisteredService<K>>
+/**
+ * Resolve a single dependency.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function inject<T>(token: string, options?: InjectOptions): (target: LateTarget<Element>) => Promise<T>
+export function inject(
+    token: TokenLike<any> | string,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Promise<any> {
+    return getDefaultApplication().inject(token as TokenLike<any>, options)
 }
 
-/** Seeds a blueprint from initial state. */
-export const createContext = app.createContext
-/** Composes blueprint operators while keeping the state shape. */
-export const pipe = app.pipe
-/** Registers an async service factory (first-class provider). */
-export const provide = app.provide
-/** Registers a sync service factory (second-class projection). */
-export const provideSync = app.provideSync
-/** Runs a handler on entering `Mounted`; its return is the LIFO cleanup. */
-export const onMount = app.onMount
-/** Runs a handler on final `Disposed` (LIFO, after cleanups). */
-export const onDispose = app.onDispose
-/** Runs a handler on `Mounted` to `Suspended` parking. */
-export const onSuspend = app.onSuspend
-/** Runs a handler on `Suspended` to `Mounted` resuscitation. */
-export const onResuscitate = app.onResuscitate
-/** Runs a handler on host adoption. */
-export const onAdopt = app.onAdopt
-/** Declares persistence for a blueprint. */
-export const persist = app.persist
-/** Latest mounted session along the ancestor chain, or null. */
-export const getSessionSync = app.getSessionSync
-/** Hot stream tracking the latest mounted session along ancestors. */
-export const session$ = app.session$
-/** Synchronous state projection from a session snapshot. */
-export const selectSync = app.selectSync
-/** State projection stream from a session. */
-export const select$ = app.select$
-/** Shallow-merges an updater into session state. */
-export const update = app.update
-/** Subscribes a listener to session state. */
-export const subscribe$ = app.subscribe$
-/** Disposes a session; idempotent. */
-export const dispose = app.dispose
-/** Late-binding single-value promise resolution from any target. */
-export const inject = app.inject
-/** Synchronous single-value projection from a ready session. */
-export const injectSync = app.injectSync
-/** Late-binding single-value resolve-once stream from any target. */
-export const inject$ = app.inject$
-/** Late-binding multi-value promise resolution from any target. */
-export const injectAll = app.injectAll
-/** Synchronous multi-value projection from a ready session. */
-export const injectAllSync = app.injectAllSync
-/** Late-binding multi-value resolve-once stream from any target. */
-export const injectAll$ = app.injectAll$
-/** Host lifecycle forwarding hooks for a session. */
-export const attach = app.attach
-/** Session snapshot (or projection) to SSR payload string. */
-export const serialize = app.serialize
+/**
+ * Resolve a single dependency as a stream.
+ *
+ * @example
+ * ```ts
+ * import { createContext, defineToken, pipe, provide, mount, inject$ } from '@sandlada/document-context'
+ *
+ * interface ConfigService {
+ *     version: string
+ * }
+ * const configToken = defineToken<ConfigService>('public')('app:config')
+ *
+ * const blueprint = pipe(
+ *     createContext({}),
+ *     provide(configToken, () => ({ version: '1.0.0' })),
+ * )
+ *
+ * const host = document.getElementById('app-root')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const sub = inject$(configToken)(host).subscribe((cfg) => {
+ *     console.log('App version:', cfg.version) // '1.0.0'
+ * })
+ * sub.unsubscribe()
+ * ```
+ *
+ * @param token - The token to resolve.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function inject$<T>(
+    token: TokenLike<T>,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Observable<T>
+/**
+ * Resolve a single dependency as a stream.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function inject$<K extends string>(
+    token: K,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Observable<RegisteredService<K>>
+/**
+ * Resolve a single dependency as a stream.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function inject$<T>(
+    token: string,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Observable<T>
+export function inject$(
+    token: TokenLike<any> | string,
+    options?: InjectOptions,
+): (target: LateTarget<Element>) => Observable<any> {
+    return getDefaultApplication().inject$(token as TokenLike<any>, options)
+}
+
+/**
+ * Collect every multi-value provider of a token.
+ *
+ * @example
+ * ```ts
+ * import { createContext, defineToken, pipe, provide, mount, injectAll } from '@sandlada/document-context'
+ *
+ * interface Validator {
+ *     name: string
+ *     validate(val: string): boolean
+ * }
+ * const validatorToken = defineToken<Validator>('public')('app:validator')
+ *
+ * const formBlueprint = pipe(
+ *     createContext({}),
+ *     provide(validatorToken, () => ({ name: 'required', validate: (v) => v.length > 0 }), { multi: true }),
+ *     provide(validatorToken, () => ({ name: 'email', validate: (v) => v.includes('@') }), { multi: true }),
+ * )
+ *
+ * const formEl = document.getElementById('signup-form')!
+ * const inputEl = document.getElementById('email-input')!
+ * const session = mount(formBlueprint)(formEl)
+ * await session.ready
+ *
+ * const validators = await injectAll(validatorToken)(inputEl)
+ * const isValid = validators.every((v) => v.validate('user@example.com'))
+ * console.log(isValid) // true
+ * ```
+ *
+ * @param token - The token to collect.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll<T>(
+    token: TokenLike<T>,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Promise<T[]>
+/**
+ * Collect every multi-value provider of a token.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll<K extends string>(
+    token: K,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Promise<RegisteredService<K>[]>
+/**
+ * Collect every multi-value provider of a token.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll<T>(
+    token: string,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Promise<T[]>
+export function injectAll(
+    token: TokenLike<any> | string,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Promise<any[]> {
+    return getDefaultApplication().injectAll(token as TokenLike<any>, options)
+}
+
+/**
+ * Collect every multi-value provider of a token as a stream.
+ *
+ * @example
+ * ```ts
+ * import { createContext, defineToken, pipe, provide, mount, injectAll$ } from '@sandlada/document-context'
+ *
+ * interface Plugin {
+ *     name: string
+ * }
+ * const pluginToken = defineToken<Plugin>('public')('app:plugin')
+ *
+ * const blueprint = pipe(
+ *     createContext({}),
+ *     provide(pluginToken, () => ({ name: 'theme-ext' }), { multi: true }),
+ * )
+ *
+ * const host = document.getElementById('toolbar')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const sub = injectAll$(pluginToken)(host).subscribe((plugins) => {
+ *     console.log('Active plugins:', plugins.map((p) => p.name))
+ * })
+ * sub.unsubscribe()
+ * ```
+ *
+ * @param token - The token to collect.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll$<T>(
+    token: TokenLike<T>,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Observable<T[]>
+/**
+ * Collect every multi-value provider of a token as a stream.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll$<K extends string>(
+    token: K,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Observable<RegisteredService<K>[]>
+/**
+ * Collect every multi-value provider of a token as a stream.
+ *
+ * @param token - The token name.
+ * @param options - The injection options.
+ * @returns A function that takes the injection target.
+ */
+export function injectAll$<T>(
+    token: string,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Observable<T[]>
+export function injectAll$(
+    token: TokenLike<any> | string,
+    options?: InjectAllOptions,
+): (target: LateTarget<Element>) => Observable<any[]> {
+    return getDefaultApplication().injectAll$(token as TokenLike<any>, options)
+}
+
+/**
+ * Read the current snapshot of a session.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, read } from '@sandlada/document-context'
+ *
+ * interface UserState {
+ *     name: string
+ *     unreadCount: number
+ * }
+ * const userBlueprint = createContext<UserState>({ name: 'Ada', unreadCount: 3 })
+ *
+ * const host = document.getElementById('user-badge')!
+ * const session = mount(userBlueprint)(host)
+ * await session.ready
+ *
+ * const unread = read<UserState, number>((s) => s.unreadCount)(session)
+ * console.log(unread) // 3
+ * ```
+ *
+ * @param selector - The projection applied to the snapshot.
+ * @returns A function that takes the session.
+ */
+export function read<S, R>(selector: (state: S) => R): (session: Session<S, any>) => R {
+    return getDefaultApplication().read(selector)
+}
+
+/**
+ * Replace the state of a session.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, update, read } from '@sandlada/document-context'
+ *
+ * interface CounterState {
+ *     count: number
+ * }
+ * const blueprint = createContext<CounterState>({ count: 0 })
+ *
+ * const host = document.getElementById('counter')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const ok = update<CounterState>((state) => ({ count: state.count + 1 }))(session)
+ * console.log(ok) // true (returns false if session was disposed)
+ * console.log(read<CounterState, number>((s) => s.count)(session)) // 1
+ * ```
+ *
+ * @param updater - The updater. Must be synchronous.
+ * @returns A function that takes the session.
+ */
+export function update<S>(updater: (state: S) => S): (session: Session<S, any>) => boolean {
+    return getDefaultApplication().update(updater)
+}
+
+/**
+ * Observe the state of a session.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, update, subscribe$ } from '@sandlada/document-context'
+ *
+ * interface CounterState {
+ *     count: number
+ * }
+ * const blueprint = createContext<CounterState>({ count: 10 })
+ *
+ * const host = document.getElementById('widget')!
+ * const label = document.getElementById('label')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const sub = subscribe$<CounterState>((state) => {
+ *     label.textContent = `Count: ${state.count}`
+ * })(session)
+ *
+ * update<CounterState>((s) => ({ count: s.count + 1 }))(session)
+ * // label.textContent updated to "Count: 11"
+ *
+ * sub.unsubscribe()
+ * ```
+ *
+ * @param listener - The listener.
+ * @returns A function that takes the session.
+ */
+export function subscribe$<S>(listener: (state: S) => void): (session: Session<S, any>) => Subscription {
+    return getDefaultApplication().subscribe$(listener)
+}
+
+/**
+ * The nearest session of an element.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, sessionAt } from '@sandlada/document-context'
+ *
+ * const blueprint = createContext({ area: 'settings' })
+ * const host = document.getElementById('settings-panel')!
+ * const innerButton = document.getElementById('save-btn')!
+ *
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const nearest = sessionAt(innerButton)
+ * console.log(nearest === session) // true
+ * ```
+ *
+ * @param target - The element.
+ * @returns The session, or `null`.
+ */
+export function sessionAt(target: Element): Session<any, DomHost> | null {
+    return getDefaultApplication().sessionAt(target)
+}
+
+/**
+ * Track the nearest session of an element.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, session$ } from '@sandlada/document-context'
+ *
+ * const blueprint = createContext({ panel: 'dashboard' })
+ * const host = document.getElementById('dashboard-container')!
+ * const card = document.getElementById('widget-card')!
+ *
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const sub = session$(card).subscribe((nearestSession) => {
+ *     console.log('Nearest session status:', nearestSession?.status)
+ * })
+ * sub.unsubscribe()
+ * ```
+ *
+ * @param target - The element.
+ * @returns The observable.
+ */
+export function session$(target: Element): Observable<Session<any, DomHost> | null> {
+    return getDefaultApplication().session$(target)
+}
+
+/**
+ * Dispose a session.
+ *
+ * @example
+ * ```ts
+ * import { createContext, pipe, onDispose, mount, dispose, update } from '@sandlada/document-context'
+ *
+ * const blueprint = pipe(
+ *     createContext({ active: true }),
+ *     onDispose((session) => {
+ *         console.log('Teardown resources for session:', session.status)
+ *     }),
+ * )
+ *
+ * const host = document.getElementById('modal-root')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * dispose(session)
+ * console.log(session.status) // 'disposed'
+ *
+ * const ok = update((s: any) => ({ ...s, active: false }))(session)
+ * console.log(ok) // false (updates on disposed sessions are safely rejected)
+ * ```
+ *
+ * @param session - The session.
+ */
+export function dispose(session: Session<any, any>): void {
+    getDefaultApplication().dispose(session)
+}
+
+/**
+ * Forward connectivity facts of an existing session.
+ *
+ * @example
+ * ```ts
+ * import { createContext, mount, attach } from '@sandlada/document-context'
+ *
+ * const blueprint = createContext({ status: 'connected' })
+ * const host = document.getElementById('custom-host')!
+ * const session = mount(blueprint)(host)
+ * await session.ready
+ *
+ * const handle = attach({
+ *     onConnect: () => console.log('Host connected to DOM'),
+ *     onDisconnect: () => console.log('Host disconnected from DOM'),
+ * })(session)
+ *
+ * // Stop tracking when no longer needed
+ * handle.detach()
+ * ```
+ *
+ * @param config - The callbacks.
+ * @returns A function that takes the session.
+ */
+export function attach(config: AttachConfig): (session: Session<any, any>) => AttachHandle {
+    return getDefaultApplication().attach(config)
+}

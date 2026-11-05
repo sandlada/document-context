@@ -1,43 +1,31 @@
 /**
- * SchedulerPort: the driven port owning every notion of time.
+ * Scheduler port.
  *
- * This module declares types only and performs no runtime work. The domain
- * MUST NOT use time operators (`delay`, `debounceTime`, `timeout`), bare
- * `queueMicrotask`, or bare `setTimeout`: `timeoutMs`, TTLs, storage batch
- * windows, and retry batching all flow through this port so tests can run a
- * deterministic fake. It stays importable in a plain Node environment.
+ * Every time-dependent behaviour of the library goes through this port: the microtask re-attachment
+ * check after a disconnect, the keyed suspension TTL, the batched wake-up of pending injections and
+ * the observer re-check. The verbs themselves never call `setTimeout` or `queueMicrotask` directly.
  */
 export interface SchedulerPort {
     /**
-     * Schedules a task on the microtask queue.
+     * Schedule a microtask.
      *
-     * @param task Callback to run on the next microtask drain.
-     * @example
-     * ```ts
-     * import type { SchedulerPort } from './scheduler.js'
-     *
-     * const defer = (scheduler: SchedulerPort, task: () => void): void => {
-     *     scheduler.microtask(task)
-     * }
-     * ```
+     * @param task - The task to run.
+     * @returns A function that cancels the task.
      */
-    microtask(task: () => void): void
+    microtask(task: () => void): () => void
     /**
-     * Schedules a task after `ms` milliseconds.
+     * Schedule a timeout.
      *
-     * @param task Callback to run once the delay elapses.
-     * @param ms Delay in milliseconds.
-     * @returns Cancel function preventing the run; idempotent, and inert
-     * once the task has already run.
+     * @param task - The task to run.
+     * @param delayMs - The delay in milliseconds.
+     * @returns A function that cancels the task.
      */
-    timeout(task: () => void, ms: number): () => void
+    timeout(task: () => void, delayMs: number): () => void
     /**
-     * Schedules a task on the next animation frame. Where no
-     * `requestAnimationFrame` exists the task MUST degrade to a microtask;
-     * the scheduler contract suite guards this fallback.
+     * Schedule a frame.
      *
-     * @param task Callback to run on the next frame (or microtask drain).
-     * @returns Cancel function preventing the run; idempotent.
+     * @param task - The task to run.
+     * @returns A function that cancels the task.
      */
     frame(task: () => void): () => void
 }

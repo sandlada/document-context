@@ -1,164 +1,132 @@
 /**
- * Session handle model and the pure reactive state store behind `state$`.
+ * Session and host vocabulary.
  *
- * This module is pure: no DOM access, no timers, no I/O. It runs in a plain
- * Node environment. The `Session` handle is a branded type with no runtime
- * constructor; only `mount` (application layer) can produce one.
- * `createSessionState` is the tiny store primitive behind `state$` with
- * `BehaviorSubject` semantics: new subscribers immediately receive the
- * current snapshot, and every update publishes a new immutable snapshot.
+ * The {@link Host} is the stable facade a session is bound to. It survives suspension and
+ * resuscitation: after a keyed session resumes on a different element, `session.host` is still the
+ * same object, but `native()` points at the new element.
  */
+
 import type { Observable } from 'rxjs'
-import { BehaviorSubject } from 'rxjs'
-import type { DocumentContextError } from './errors.js'
-import type { HostPort } from '../ports/host.js'
+import type { DocumentContextError } from './errors'
+import type { LifecycleEvent, SessionStatus } from './lifecycle'
 
-declare const SessionBrand: unique symbol
+/** Marker used to recognise a session without relying on `instanceof` across bundles. */
+export const sessionBrand: unique symbol = Symbol('document-context.session')
+
+/** Where a host lives. */
+export type HostKind = 'element' | 'server'
 
 /**
- * Branded Session handle: a single mount handle whose fields are publicly
- * readable but never directly constructible. Handles are only obtained via
- * `mount`, which also owns the `host` facade, the abort wiring, and the
- * `Suspended` / `Disposed` transitions described in the domain model.
+ * A DOM-like event delivered through {@link Host.on}.
  *
- * @param S State shape; constrained to plain objects so `update` can
- * shallow-merge with object-spread semantics.
- * @param Host Native host type carried by the `HostPort` facade; the domain
- * keeps it generic while the public surface binds it to `HTMLElement`.
+ * The domain layer never touches DOM globals, so the event shape is described structurally.
  */
-export interface Session<S extends Record<PropertyKey, unknown> = Record<PropertyKey, unknown>, Host = unknown> {
-    /** Brand marker proving the handle was issued by `mount`; not fabricable. */
-    readonly [SessionBrand]: true
-    /** Stable host facade: the reference never changes, resuscitation repoints it internally. */
-    readonly host: HostPort<Host>
-    /** Normalized keyed identity, or null for anonymous sessions. */
-    readonly token: string | null
-    /** Whether the current host is connected. */
+export interface HostEvent {
+    readonly type: string
+    readonly target: unknown
+    readonly currentTarget: unknown
+    readonly defaultPrevented: boolean
+    readonly detail?: unknown
+    readonly [key: string]: unknown
+}
+
+/** Listener signature for {@link Host.on}. */
+export type HostEventListener = (event: HostEvent) => void
+
+/** Options accepted by {@link Host.on}. */
+export interface HostListenerOptions {
+    readonly signal?: AbortSignal
+}
+
+/**
+ * The external face of the node a session is bound to.
+ *
+ * @typeParam TNative - The underlying platform object (`Element` in the browser).
+ */
+export interface Host<TNative = unknown> {
+    /** Whether this host lives in an element-capable environment. */
+    readonly kind: HostKind
+    /** Whether the host is currently attached to its environment. */
     readonly isConnected: boolean
-    /** Whether the session is parked in `Suspended` awaiting resuscitation. */
-    readonly isSuspended: boolean
-    /** Whether the session reached terminal `Disposed`. */
-    readonly isDisposed: boolean
-    /** Abort signal sharing its source with `abort$`; aborts on dispose. */
-    readonly abortSignal: AbortSignal
-    /** Hot state stream backed by the current snapshot. */
+    /** The composed ancestor host, or `null` at the end of the chain. */
+    readonly parent: Host | null
+    /**
+     * The underlying platform object.
+     *
+     * @throws When the host does not expose a native object (server hosts).
+     */
+    native(): TNative
+    /**
+     * Register a DOM listener on the current native object.
+     *
+     * @param type - The event type.
+     * @param listener - The listener.
+     * @param options - Listener options, including an optional `signal`.
+     * @returns A function that removes the listener.
+     */
+    on(type: string, listener: HostEventListener, options?: HostListenerOptions): () => void
+}
+
+/**
+ * A non-DOM placeholder host used by SSR.
+ *
+ * It has no parent chain, dispatches no events and exposes no native object.
+ */
+export interface ServerHost {
+    readonly kind: 'server'
+}
+
+/** Everything `mount` accepts as its final argument in the browser. */
+export type MountTarget = Element | ServerHost
+
+/**
+ * Everything `inject` accepts as its final argument.
+ *
+ * @typeParam TTarget - The raw element type of the host adapter.
+ */
+export type LateTarget<TTarget = Element> = TTarget | Session<any, any>
+
+/**
+ * The handle returned by `mount`.
+ *
+ * @typeParam S - The state shape.
+ * @typeParam THost - The host flavour exposed by the owning adapter.
+ */
+export interface Session<S, THost extends Host = Host> {
+    /** The stable host facade. */
+    readonly host: THost
+    /** The keyed identity of this session, or `null` for anonymous sessions. */
+    readonly token: string | null
+    /** The current lifecycle status. */
+    readonly status: SessionStatus
+    /** Resolves once initialization finished (or the session failed to initialize). */
+    readonly ready: Promise<void>
+    /** Hot stream of state snapshots; replays the current snapshot on subscribe. */
     readonly state$: Observable<S>
-    /** Non-fatal error stream; fatal errors are thrown, never pushed here. */
+    /** Hot stream of non-fatal errors. */
     readonly errors$: Observable<DocumentContextError>
-    /** Session lifecycle stream of `LifecycleEvent` values. */
+    /** Hot stream of lifecycle events; backs the current status on subscribe. */
     readonly lifecycle$: Observable<LifecycleEvent>
-    /** Fires once, immediately, when the session is disposed. */
-    readonly abort$: Observable<void>
-    /** Optional Explicit Resource Management hook; absent without `ESNext.Disposable`. */
-    readonly [Symbol.dispose]?: () => void
-    /** Optional async Explicit Resource Management hook; absent without `ESNext.Disposable`. */
-    readonly [Symbol.asyncDispose]?: () => Promise<void>
+    /** Aborted when the session is disposed. Safe to hand to `fetch`. */
+    readonly abortSignal: AbortSignal
+    /**
+     * Dispose the session and wait for the asynchronous cleanup to settle.
+     *
+     * @returns A promise that resolves when every cleanup settled.
+     */
+    [Symbol.asyncDispose](): Promise<void>
 }
 
 /**
- * Session lifecycle event union. `adopted` is the only variant carrying a
- * payload: the new owner supplied by `adoptNode`.
- */
-export type LifecycleEvent =
-    | { readonly type: 'mounted' }
-    | { readonly type: 'suspended' }
-    | { readonly type: 'resuscitated', readonly details?: { readonly setup?: 'deferred-mount' } }
-    | { readonly type: 'adopted', readonly owner: unknown }
-    | { readonly type: 'disposed', readonly details?: { readonly evicted?: 'suspended-cap' } }
-
-/**
- * Minimal pure store primitive behind `state$`. The store owns its snapshot,
- * replaces it (never mutates in place) on every change, and enters poisoned
- * protection once the session is disposed: updates report `false`, sets are
- * ignored, the snapshot stays frozen, and `state$` completes.
- */
-export interface SessionState<S extends Record<PropertyKey, unknown>> {
-    /** Hot stream replaying the current snapshot to every new subscriber. */
-    readonly state$: Observable<S>
-    /**
-     * Reads the current snapshot.
-     *
-     * @returns The live snapshot reference; treat it as read-only.
-     */
-    getSnapshot(): S
-    /**
-     * Replaces the whole snapshot and pushes it to `state$`; ignored once poisoned.
-     *
-     * @param next The complete replacement snapshot.
-     */
-    setState(next: S): void
-    /**
-     * Shallow-merges a partial (or the result of an updater function) over the
-     * previous snapshot with object-spread semantics: no deep merge, no key
-     * deletion, prototype-safe `CreateDataProperty` writes.
-     *
-     * @param updater A partial state or a function mapping the previous snapshot to new or partial state.
-     * @returns True when the merge was applied; false when the store is poisoned.
-     */
-    update(updater: Partial<S> | ((prev: S) => S | Partial<S>)): boolean
-    /**
-     * Enters poisoned protection and completes `state$`.
-     */
-    poison(): void
-    /**
-     * Reports whether the store is poisoned.
-     *
-     * @returns True once `poison` has run.
-     */
-    isPoisoned(): boolean
-}
-
-/**
- * Creates an isolated reactive state store seeded with a shallow copy of the
- * initial state. Pure factory: no DOM, no timers, no shared globals; every
- * call yields an independent store backed by its own `BehaviorSubject`.
+ * Whether the given value is a session handle.
  *
- * @param initial Seed snapshot; copied shallowly so later caller mutations cannot leak in.
- * @returns The new store handle.
- * @example
- * ```ts
- * import { createSessionState } from './session.js'
- *
- * const store = createSessionState({ count: 0 })
- * store.update({ count: 1 })
- * console.log(store.getSnapshot())
- * ```
+ * @param value - The value to test.
+ * @returns `true` when `value` carries the session brand.
  */
-export function createSessionState<S extends Record<PropertyKey, unknown>>(initial: S): SessionState<S> {
-    const subject = new BehaviorSubject<S>({ ...initial })
-    let current: S = subject.value
-    let poisoned = false
-
-    return {
-        state$: subject.asObservable(),
-        getSnapshot(): S {
-            return current
-        },
-        setState(next: S): void {
-            if (poisoned) {
-                return
-            }
-            current = { ...next }
-            subject.next(current)
-        },
-        update(updater: Partial<S> | ((prev: S) => S | Partial<S>)): boolean {
-            if (poisoned) {
-                return false
-            }
-            const resolved: S | Partial<S> = typeof updater === 'function' ? updater(current) : updater
-            current = { ...current, ...resolved }
-            subject.next(current)
-            return true
-        },
-        poison(): void {
-            if (poisoned) {
-                return
-            }
-            poisoned = true
-            subject.complete()
-        },
-        isPoisoned(): boolean {
-            return poisoned
-        },
-    }
+export function isSession(value: unknown): value is Session<any, any> {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        sessionBrand in (value as Record<symbol, unknown>)
+    )
 }

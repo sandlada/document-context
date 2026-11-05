@@ -1,71 +1,43 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createContext } from './create-context.js'
-import { onAdopt, onDispose, onMount, onResuscitate, onSuspend } from './hooks.js'
+import { describe, expect, it } from 'vitest'
+import { createContext, pipe } from '../../domain/model/blueprint'
+import { onAdopt, onDispose, onMount, onResume, onSuspend } from './hooks'
 
-describe('lifecycle hook operators', () => {
-    const cases = [
-        { name: 'onMount', operator: onMount, event: 'mount' },
-        { name: 'onDispose', operator: onDispose, event: 'dispose' },
-        { name: 'onSuspend', operator: onSuspend, event: 'suspend' },
-        { name: 'onResuscitate', operator: onResuscitate, event: 'resuscitate' },
-        { name: 'onAdopt', operator: onAdopt, event: 'adopt' },
-    ] as const
+describe('hook operators', () => {
+    it('[LC #8] 每個鉤子都是純藍圖運算子', () => {
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => undefined),
+            onSuspend(() => undefined),
+            onResume(() => undefined),
+            onAdopt(() => undefined),
+            onDispose(() => undefined),
+        )
 
-    for (const { name, operator, event } of cases) {
-        it(`${name} appends a ${event} hook without running the handler`, () => {
-            const handler = vi.fn((): undefined => undefined)
-            const blueprint = operator(handler)(createContext({ count: 0 }))
-            expect(handler).not.toHaveBeenCalled()
-            expect(blueprint.hooks).toHaveLength(1)
-            const [registration] = blueprint.hooks
-            expect(registration?.event).toBe(event)
-            expect(registration?.handler).toBe(handler)
-        })
-    }
-
-    it('onResuscitate keeps a two-argument session-plus-host handler', () => {
-        const handler = vi.fn((_session: unknown, _host: unknown): undefined => undefined)
-        const blueprint = onResuscitate(handler)(createContext({ count: 0 }))
-        expect(handler).not.toHaveBeenCalled()
-        const [registration] = blueprint.hooks
-        expect(registration?.event).toBe('resuscitate')
-        expect(registration?.handler).toBe(handler)
+        expect(blueprint.hooks.map((hook) => hook.type)).toEqual([
+            'mount',
+            'suspend',
+            'resume',
+            'adopt',
+            'dispose',
+        ])
     })
 
-    it('onAdopt keeps a session-plus-owner handler', () => {
-        const handler = vi.fn((_session: unknown, _owner: unknown): undefined => undefined)
-        const blueprint = onAdopt(handler)(createContext({ count: 0 }))
-        expect(handler).not.toHaveBeenCalled()
-        const [registration] = blueprint.hooks
-        expect(registration?.event).toBe('adopt')
-        expect(registration?.handler).toBe(handler)
+    it('[LC #8] 鉤子註冊順序被保留', () => {
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => undefined),
+            onMount(() => undefined),
+        )
+
+        expect(blueprint.hooks.map((hook) => hook.order)).toEqual([0, 1])
     })
 
-    it('onDispose keeps an async handler', () => {
-        const handler = vi.fn(async (): Promise<void> => undefined)
-        const blueprint = onDispose(handler)(createContext({ count: 0 }))
-        expect(handler).not.toHaveBeenCalled()
-        const [registration] = blueprint.hooks
-        expect(registration?.event).toBe('dispose')
-        expect(registration?.handler).toBe(handler)
-    })
+    it('[API #1] 鉤子運算子不回傳 void 且不改變來源藍圖', () => {
+        const source = createContext({ count: 0 })
+        const operator = onMount(() => undefined)
+        const result = operator(source)
 
-    it('preserves registration order across mixed hooks', () => {
-        const seed = createContext({ count: 0 })
-        const noop = (): undefined => undefined
-        const blueprint = onAdopt(noop)(onResuscitate(noop)(onSuspend(noop)(onDispose(noop)(onMount(noop)(seed)))))
-        expect(blueprint.hooks.map((hook) => hook.event)).toEqual(['mount', 'dispose', 'suspend', 'resuscitate', 'adopt'])
-    })
-
-    it('returns a new blueprint and leaves the input hooks untouched', () => {
-        const input = createContext({ count: 0 })
-        const noop = (): undefined => undefined
-        const output = onMount(noop)(input)
-        expect(output).not.toBe(input)
-        expect(output.hooks).not.toBe(input.hooks)
-        expect(input.hooks).toEqual([])
-        expect(output.initial).toBe(input.initial)
-        expect(output.providers).toBe(input.providers)
-        expect(output.storage).toBe(input.storage)
+        expect(result).not.toBe(source)
+        expect(source.hooks).toHaveLength(0)
     })
 })

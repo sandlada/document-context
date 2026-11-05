@@ -12,13 +12,15 @@
         "src/**/*"
     ],
     "exclude": [
-        "src/**/*.test.ts",
-        "**/*.test.ts",
+        "build",
+        "node_modules",
         "src/**/*.unit-test.ts",
         "**/*.unit-test.ts",
         "src/**/*.integration-test.ts",
         "**/*.integration-test.ts",
         "src/**/*.e2e-test.ts",
-        "**/*.e2e-test.ts"
+        "**/*.e2e-test.ts",
+        "src/testing/**",
+        "src/**/testing/**"
     ]
 }

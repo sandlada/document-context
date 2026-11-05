@@ -1,163 +1,169 @@
 /**
- * Blueprint lifecycle-hook operators: observe mount, dispose, suspend,
- * resuscitate, and adopt.
+ * Lifecycle hook operators.
  *
- * This module is pure: no DOM access, no timers, no I/O. It runs in a plain
- * Node environment. Operators append registrations only; handlers never run
- * here (mount executes them in lifecycle order).
+ * Every hook is a pure blueprint operator: it appends a registration and returns a new blueprint.
+ * Nothing runs before `mount`.
  */
-import type { BlueprintHookEvent, ContextBlueprint, HookRegistration } from '../../domain/model/blueprint.js'
-import type { HostPort } from '../../domain/ports/host.js'
-import type { Session } from '../../domain/model/session.js'
 
-/**
- * Pure blueprint transformer. The canonical definition lives in `pipe.ts`;
- * this alias is structurally identical and local so these operators stay free
- * of sibling imports.
- */
-type BlueprintOperator<S extends Record<PropertyKey, unknown>> = (bp: ContextBlueprint<S>) => ContextBlueprint<S>
+import type { Blueprint, BlueprintOperator, HookFn, HookType } from '../../domain/model/blueprint'
 
-/**
- * Appends a hook registration, copying the hooks array and sharing every
- * other blueprint slice by reference.
- */
-function appendHook<S extends Record<PropertyKey, unknown>>(
-    bp: ContextBlueprint<S>,
-    event: BlueprintHookEvent,
-    handler: HookRegistration['handler'],
-): ContextBlueprint<S> {
-    return { ...bp, hooks: [...bp.hooks, { event, handler }] }
+function hookOperator(type: HookType, hook: HookFn): BlueprintOperator<any> {
+    return (blueprint: Blueprint<any>): Blueprint<any> => {
+        const registration = { type, hook, order: blueprint.hooks.length }
+        return Object.freeze({
+            state: blueprint.state,
+            providers: blueprint.providers,
+            hooks: Object.freeze([...blueprint.hooks, registration]),
+        })
+    }
 }
 
 /**
- * Observes entry into `Mounted` (hydration plus eager services complete).
- * Phase 1 of the two-phase model: a pure, lazy, in-memory declaration with
- * zero DOM access, zero I/O, zero listeners, and zero handler execution. The
- * handler runs at mount in FIFO order and may return a cleanup closure for
- * the LIFO disposal chain; the call is idempotent and never mutates inputs.
+ * Run a hook the first time the session becomes `active`.
  *
- * @param handler Hook invoked with the mounted session; its optional return
- * is kept as a disposal cleanup.
- * @returns A blueprint operator appending the registration.
+ * The hook may return a cleanup function — it runs when the session is finally disposed, before
+ * the `onDispose` hooks. It may also return a promise; `ready` waits for it.
+ *
  * @example
  * ```ts
- * import { createContext } from './create-context.js'
- * import { onMount } from './hooks.js'
+ * import { createContext, pipe, onMount, mount, dispose } from '@sandlada/document-context'
  *
- * const blueprint = onMount(() => {
- *     console.log('mounted')
- * })(createContext({ count: 0 }))
- * console.log(blueprint.hooks.length)
+ * let timerRunning = false
+ *
+ * const timerBlueprint = pipe(
+ *     createContext({ ticks: 0 }),
+ *     onMount((session) => {
+ *         timerRunning = true
+ *         // Return cleanup callback executed when the session is disposed
+ *         return () => {
+ *             timerRunning = false
+ *         }
+ *     }),
+ * )
+ *
+ * const host = document.getElementById('timer-host')!
+ * const session = mount(timerBlueprint)(host)
+ * await session.ready
+ * console.log(timerRunning) // true
+ *
+ * dispose(session)
+ * console.log(timerRunning) // false
  * ```
+ *
+ * @param hook - The hook callback.
+ * @returns A blueprint operator.
  */
-export function onMount<S extends Record<PropertyKey, unknown>>(
-    handler: (session: Session<S>) => void | (() => void),
-): BlueprintOperator<S> {
-    return (bp: ContextBlueprint<S>): ContextBlueprint<S> => appendHook(bp, 'mount', handler)
+export function onMount(hook: HookFn): BlueprintOperator<any> {
+    return hookOperator('mount', hook)
 }
 
 /**
- * Observes terminal `Disposed`. Phase 1 of the two-phase model: a pure,
- * lazy, in-memory declaration with zero DOM access, zero I/O, zero
- * listeners, and zero handler execution. The handler runs in the synchronous
- * disposal phase in LIFO order (after mount cleanup closures); async returns
- * settle fire-and-forget. The call is idempotent and never mutates inputs.
+ * Run a hook when the session is disposed. Disposal hooks run in LIFO order.
  *
- * @param handler Hook invoked with the disposed session; async work is not
- * awaited by disposal.
- * @returns A blueprint operator appending the registration.
  * @example
  * ```ts
- * import { createContext } from './create-context.js'
- * import { onDispose } from './hooks.js'
+ * import { createContext, pipe, onDispose, mount, dispose } from '@sandlada/document-context'
  *
- * const blueprint = onDispose(() => {
- *     console.log('disposed')
- * })(createContext({ count: 0 }))
- * console.log(blueprint.hooks.length)
+ * const resourceBlueprint = pipe(
+ *     createContext({ open: true }),
+ *     onDispose((session) => {
+ *         console.log('Session disposed, releasing resources')
+ *     }),
+ * )
+ *
+ * const host = document.getElementById('resource-host')!
+ * const session = mount(resourceBlueprint)(host)
+ * await session.ready
+ *
+ * dispose(session) // triggers onDispose callback
  * ```
+ *
+ * @param hook - The hook callback.
+ * @returns A blueprint operator.
  */
-export function onDispose<S extends Record<PropertyKey, unknown>>(
-    handler: (session: Session<S>) => void | Promise<void>,
-): BlueprintOperator<S> {
-    return (bp: ContextBlueprint<S>): ContextBlueprint<S> => appendHook(bp, 'dispose', handler)
+export function onDispose(hook: HookFn): BlueprintOperator<any> {
+    return hookOperator('dispose', hook)
 }
 
 /**
- * Observes the keyed `Mounted` to `Suspended` transition. Phase 1 of the
- * two-phase model: a pure, lazy, in-memory declaration with zero DOM access,
- * zero I/O, zero listeners, and zero handler execution. The handler pauses
- * resources in FIFO order without running mount cleanups; the call is
- * idempotent and never mutates inputs.
+ * Run a hook when the session moves from `active` to `suspended`.
  *
- * @param handler Hook invoked with the suspended session.
- * @returns A blueprint operator appending the registration.
  * @example
  * ```ts
- * import { createContext } from './create-context.js'
- * import { onSuspend } from './hooks.js'
+ * import { createContext, pipe, onSuspend, onResume, mount } from '@sandlada/document-context'
  *
- * const blueprint = onSuspend(() => {
- *     console.log('suspended')
- * })(createContext({ count: 0 }))
- * console.log(blueprint.hooks.length)
+ * const canvasBlueprint = pipe(
+ *     createContext({ running: true }),
+ *     onSuspend((session) => {
+ *         // Host was disconnected from DOM: pause rendering loop
+ *         console.log('Session suspended: rendering paused')
+ *     }),
+ *     onResume((session) => {
+ *         // Session resuscitated within TTL: resume rendering loop
+ *         console.log('Session resumed: rendering restarted')
+ *     }),
+ * )
+ *
+ * const host = document.getElementById('canvas-host')!
+ * const session = mount(canvasBlueprint, { token: 'app:canvas', suspensionTtlMs: 3000 })(host)
+ * await session.ready
  * ```
+ *
+ * @param hook - The hook callback.
+ * @returns A blueprint operator.
  */
-export function onSuspend<S extends Record<PropertyKey, unknown>>(
-    handler: (session: Session<S>) => void,
-): BlueprintOperator<S> {
-    return (bp: ContextBlueprint<S>): ContextBlueprint<S> => appendHook(bp, 'suspend', handler)
+export function onSuspend(hook: HookFn): BlueprintOperator<any> {
+    return hookOperator('suspend', hook)
 }
 
 /**
- * Observes the `Suspended` to `Mounted` resuscitation transition. Phase 1 of
- * the two-phase model: a pure, lazy, in-memory declaration with zero DOM
- * access, zero I/O, zero listeners, and zero handler execution. The handler
- * rebinds resources to the new host in FIFO order with state fully
- * continued; the call is idempotent and never mutates inputs.
+ * Run a hook when a suspended session resumes.
  *
- * @param handler Hook invoked with the resuscitated session and its new
- * host; native references must be re-read here.
- * @returns A blueprint operator appending the registration.
  * @example
  * ```ts
- * import { createContext } from './create-context.js'
- * import { onResuscitate } from './hooks.js'
+ * import { createContext, pipe, onResume, mount } from '@sandlada/document-context'
  *
- * const blueprint = onResuscitate((_session, _host) => {
- *     console.log('resuscitated')
- * })(createContext({ count: 0 }))
- * console.log(blueprint.hooks.length)
+ * const liveBlueprint = pipe(
+ *     createContext({ reconnecting: false }),
+ *     onResume((session) => {
+ *         console.log('Keyed session resuscitated on new host element')
+ *     }),
+ * )
+ *
+ * const host = document.getElementById('feed-host')!
+ * const session = mount(liveBlueprint, { token: 'app:feed', suspensionTtlMs: 2000 })(host)
+ * await session.ready
  * ```
+ *
+ * @param hook - The hook callback.
+ * @returns A blueprint operator.
  */
-export function onResuscitate<S extends Record<PropertyKey, unknown>>(
-    handler: (session: Session<S>, host: HostPort) => void,
-): BlueprintOperator<S> {
-    return (bp: ContextBlueprint<S>): ContextBlueprint<S> => appendHook(bp, 'resuscitate', handler)
+export function onResume(hook: HookFn): BlueprintOperator<any> {
+    return hookOperator('resume', hook)
 }
 
 /**
- * Observes `adoptNode` while the session stays `Mounted`. Phase 1 of the
- * two-phase model: a pure, lazy, in-memory declaration with zero DOM access,
- * zero I/O, zero listeners, and zero handler execution. The handler runs in
- * FIFO order as observers and registry entries migrate documents; the call
- * is idempotent and never mutates inputs.
+ * Run a hook when the host node is adopted into another document.
  *
- * @param handler Hook invoked with the adopted session and its new owner.
- * @returns A blueprint operator appending the registration.
  * @example
  * ```ts
- * import { createContext } from './create-context.js'
- * import { onAdopt } from './hooks.js'
+ * import { createContext, pipe, onAdopt, mount } from '@sandlada/document-context'
  *
- * const blueprint = onAdopt((_session, _owner) => {
- *     console.log('adopted')
- * })(createContext({ count: 0 }))
- * console.log(blueprint.hooks.length)
+ * const iframeBlueprint = pipe(
+ *     createContext({ mode: 'embedded' }),
+ *     onAdopt((session) => {
+ *         console.log('Host node adopted into a different Document or ShadowRoot')
+ *     }),
+ * )
+ *
+ * const host = document.createElement('div')
+ * const session = mount(iframeBlueprint)(host)
+ * await session.ready
  * ```
+ *
+ * @param hook - The hook callback.
+ * @returns A blueprint operator.
  */
-export function onAdopt<S extends Record<PropertyKey, unknown>>(
-    handler: (session: Session<S>, owner: unknown) => void,
-): BlueprintOperator<S> {
-    return (bp: ContextBlueprint<S>): ContextBlueprint<S> => appendHook(bp, 'adopt', handler)
+export function onAdopt(hook: HookFn): BlueprintOperator<any> {
+    return hookOperator('adopt', hook)
 }

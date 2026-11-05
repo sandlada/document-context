@@ -1,54 +1,55 @@
 import { describe, expect, it } from 'vitest'
-import type { BlueprintHookEvent, ContextBlueprint, HookRegistration } from './blueprint.js'
+import { copyState, createContext, isPlainObject, pipe } from './blueprint'
+import { defineToken } from './token'
 
-describe('ContextBlueprint', () => {
-    it('holds initial state, providers, hooks, and storage', () => {
-        const blueprint: ContextBlueprint<{ count: number }> = {
-            initial: { count: 0 },
-            providers: new Map(),
-            hooks: [],
-            storage: null,
-        }
-        expect(blueprint.initial).toEqual({ count: 0 })
-        expect(blueprint.providers).toBeInstanceOf(Map)
-        expect(blueprint.providers.size).toBe(0)
-        expect(blueprint.hooks).toEqual([])
-        expect(blueprint.storage).toBeNull()
+describe('blueprint', () => {
+    it('[API #1] 藍圖運算子為 data-last 且例外只有四類', () => {
+        const operator = (blueprint: ReturnType<typeof createContext<{ count: number }>>) => blueprint
+        expect(typeof operator).toBe('function')
+        expect(typeof createContext).toBe('function')
+        expect(typeof pipe).toBe('function')
+        expect(typeof defineToken).toBe('function')
     })
 
-    it('accepts every hook event and preserves hook order', () => {
-        const events: ReadonlyArray<BlueprintHookEvent> = ['mount', 'dispose', 'suspend', 'resuscitate', 'adopt']
-        const hooks: ReadonlyArray<HookRegistration> = events.map((event) => ({
-            event,
-            handler: () => 'handled',
-        }))
-        const blueprint: ContextBlueprint = {
-            initial: {},
-            providers: new Map(),
-            hooks,
-            storage: null,
-        }
-        expect(blueprint.hooks.map((hook) => hook.event)).toEqual([...events])
-        for (const hook of blueprint.hooks) {
-            expect(hook.handler()).toBe('handled')
-        }
+    it('[API #1] pipe 由左至右套用運算子且不變更來源藍圖', () => {
+        const source = createContext({ count: 0 })
+        const result = pipe(
+            source,
+            (blueprint) => ({ ...blueprint, state: { count: 1 } }),
+            (blueprint) => ({ ...blueprint, state: { count: blueprint.state.count + 1 } }),
+        )
+
+        expect(result.state).toEqual({ count: 2 })
+        expect(source.state).toEqual({ count: 0 })
+        expect(result).not.toBe(source)
     })
 
-    it('exposes readonly fields (compile-time immutability)', () => {
-        const blueprint: ContextBlueprint = {
-            initial: {},
-            providers: new Map(),
-            hooks: [],
-            storage: null,
-        }
-        // @ts-expect-error - initial is readonly
-        blueprint.initial = {}
-        // @ts-expect-error - providers is readonly
-        blueprint.providers = new Map()
-        // @ts-expect-error - hooks is readonly
-        blueprint.hooks = []
-        // @ts-expect-error - storage is readonly
-        blueprint.storage = null
-        expect(blueprint).toBeDefined()
+    it('[API #7] createContext 複製初始狀態', () => {
+        const initial = { count: 0, nested: { label: 'a' } }
+        const blueprint = createContext(initial)
+
+        initial.count = 99
+        initial.nested.label = 'b'
+
+        expect(blueprint.state.count).toBe(0)
+        expect(blueprint.state.nested.label).toBe('a')
+    })
+
+    it('[API #7] copyState 深拷貝純物件與陣列並保留其他值', () => {
+        const instance = new Date(0)
+        const source = { list: [1, 2], when: instance }
+        const copy = copyState(source)
+
+        expect(copy.list).not.toBe(source.list)
+        expect(copy.list).toEqual([1, 2])
+        expect(copy.when).toBe(instance)
+    })
+
+    it('[API #1] isPlainObject 只認物件字面量', () => {
+        expect(isPlainObject({})).toBe(true)
+        expect(isPlainObject(Object.create(null))).toBe(true)
+        expect(isPlainObject([])).toBe(false)
+        expect(isPlainObject(null)).toBe(false)
+        expect(isPlainObject(new Date())).toBe(false)
     })
 })

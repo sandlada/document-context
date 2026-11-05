@@ -1,83 +1,93 @@
 /**
- * HostPort: the driven port abstracting a physical host node.
+ * Host adapter port.
  *
- * This module declares types only and performs no runtime work. It never
- * touches the DOM, installs no listeners, and starts no timers: `on()` only
- * describes how an adapter subscribes to native events. It stays importable
- * in a plain Node environment.
+ * The host adapter is the boundary between "a thing the caller pointed at" and the internal host
+ * representation. It also carries the four collaborators that always travel together with it:
+ * connectivity, scheduling, scope transport and keyed identity.
  */
-import type { Observable } from 'rxjs'
+
+import type { Host } from '../model/session'
+import type { SchedulerPort } from './scheduler'
+import type { ScopeTransportPort } from './scope-transport'
 
 /**
- * Lifecycle event of a host: connection, disconnection, or adoption by a new
- * owner. `connect` is the host event; `mounted` is the separate Session
- * `lifecycle$` event.
+ * Answers "is this host connected right now?" and reports when the answer changes.
+ *
+ * The whole lifecycle model is driven by connectivity, so this port is what makes the library
+ * usable outside the browser.
  */
-export type HostLifecycleEvent =
-    | { readonly type: 'connect' }
-    | { readonly type: 'disconnect' }
-    | { readonly type: 'adopt', readonly owner: unknown }
+export interface ConnectivityPort {
+    /**
+     * The current connectivity of a host.
+     *
+     * @param host - The host to inspect.
+     * @returns `true` when the host is attached to its environment.
+     */
+    isConnected(host: Host): boolean
+    /**
+     * Subscribe to connectivity changes of a host.
+     *
+     * The listener is only invoked when the value actually changes.
+     *
+     * @param host - The host to watch.
+     * @param listener - Invoked with the new connectivity.
+     * @returns A function that removes the subscription.
+     */
+    subscribe(host: Host, listener: (connected: boolean, owner?: unknown) => void): () => void
+}
 
 /**
- * Driven port abstracting a physical host node and its scope position. The
- * scope chain resolves through `parent` links; services walk ancestor hosts
- * while state never crosses sessions.
+ * Reads and writes the keyed identity stored on the host.
  *
- * The public surface binds `Native` to `HTMLElement`; the domain keeps it
- * `unknown` so this module loads with no DOM.
- *
- * @param Native Type of the underlying native node (default `unknown`).
+ * In the browser the identity lives in the `data-context-key` attribute. Reads and writes share
+ * the token name validation used by `defineToken`.
  */
-export interface HostPort<Native = unknown> {
-    /** Normalized keyed identity, or null for an anonymous host. */
-    readonly token: string | null
-    /** Whether the host is currently connected to its document. */
-    readonly isConnected: boolean
-    /** Parent scope host, or null at the scope root. */
-    readonly parent: HostPort<Native> | null
-    /** Hot stream of `connect`, `disconnect`, and `adopt` host events. */
-    readonly lifecycle$: Observable<HostLifecycleEvent>
+export interface TokensPort {
     /**
-     * Subscribes to a native event (for example `input`) without the library
-     * taking over DOM writes. Options pass through to the native subscription.
+     * Read the keyed identity of a host.
      *
-     * @param type Native event name to listen for.
-     * @param listener Callback invoked with each native event.
-     * @param options Optional capture, passive, once, and abort-signal flags.
-     * An already-aborted signal attaches nothing and returns a no-op.
-     * @returns Unsubscribe function removing the listener; idempotent.
-     * @example
-     * ```ts
-     * import type { HostPort } from './host.js'
-     *
-     * const observeInput = (host: HostPort, onValue: (value: unknown) => void): (() => void) => {
-     *     return host.on('input', onValue, { passive: true })
-     * }
-     * ```
+     * @param host - The host to read.
+     * @returns The token name, or `null` when the host carries none.
      */
-    on(
-        type: string,
-        listener: (event: unknown) => void,
-        options?: {
-            readonly capture?: boolean
-            readonly passive?: boolean
-            readonly once?: boolean
-            readonly signal?: AbortSignal
-        },
-    ): () => void
+    read(host: Host): string | null
     /**
-     * Escape hatch returning the underlying native node for direct calls such
-     * as `focus()`, `setAttribute()`, or `getBoundingClientRect()`.
+     * Write the keyed identity of a host.
      *
-     * @returns The underlying native node.
-     * @example
-     * ```ts
-     * import type { HostPort } from './host.js'
-     *
-     * const focusHost = (host: HostPort<HTMLElement>): void => {
-     *     host.native().focus()
-     * }
-     * ```
+     * @param host - The host to write.
+     * @param token - The token name.
      */
-    native(): Native
+    write(host: Host, token: string): void
+    /**
+     * Remove the keyed identity of a host when it still belongs to the given token.
+     *
+     * @param host - The host to clean up.
+     * @param token - The token name the host is expected to carry.
+     */
+    remove(host: Host, token: string): void
+}
+
+/**
+ * Normalizes mount and injection targets into hosts and provides the collaborators that travel
+ * with a host.
+ *
+ * @typeParam THost - The host flavour produced by this adapter.
+ * @typeParam TTarget - The raw target this adapter accepts.
+ */
+export interface HostAdapter<THost extends Host = Host, TTarget = unknown> {
+    /**
+     * Normalize a raw target into a host handle.
+     *
+     * @param target - The raw target.
+     * @returns The host handle.
+     * @throws A `DocumentContextError` with code `HOST_INVALID` when the target is not supported.
+     */
+    normalize(target: TTarget): THost
+    /** Connectivity facts. */
+    readonly connectivity: ConnectivityPort
+    /** Time behaviour. */
+    readonly scheduler: SchedulerPort
+    /** Scope transport and Context Protocol bus. */
+    readonly scope: ScopeTransportPort
+    /** Keyed identity storage. */
+    readonly tokens: TokensPort
 }

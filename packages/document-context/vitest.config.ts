@@ -15,14 +15,14 @@ export default defineConfig({
                 test: {
                     name: 'integration',
                     environment: 'happy-dom',
-                    include: ['src/**/*.integration-test.ts']
+                    include: ['test/integration/**/*.integration-test.ts']
                 }
             },
             {
                 test: {
                     name: 'e2e',
                     environment: 'happy-dom',
-                    include: ['src/**/*.e2e-test.ts']
+                    include: ['test/e2e/**/*.e2e-test.ts']
                 }
             }
         ],
@@ -30,7 +30,8 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['json', 'html'],
             exclude: [
-                'src/domain/testing/**'
+                'src/testing/**',
+                'src/**/testing/**'
             ]
         }
     }

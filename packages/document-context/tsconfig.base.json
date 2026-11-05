@@ -15,7 +15,6 @@
         "noUncheckedSideEffectImports": true,
         "isolatedModules": true,
         "verbatimModuleSyntax": true,
-        "skipLibCheck": true,
-        "experimentalDecorators": true
+        "skipLibCheck": true
     }
 }

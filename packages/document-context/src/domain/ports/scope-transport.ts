@@ -1,140 +1,139 @@
 /**
- * ScopeTransportPort: the driven port resolving services along host scope
- * chains, plus the late-binding watch channels.
+ * Scope transport port.
  *
- * This module holds the only runtime helper in the ports layer,
- * {@link isThenable}: a duck-typing probe shared by every `MaybePromise`
- * consumer. Everything else declares types only and performs no I/O. Token
- * and host types enter by `import type` only, so they are erased at runtime
- * and this module stays importable in a plain Node environment.
+ * The transport has two responsibilities: resolving a scope **inside one application** through an
+ * in-memory index, and carrying the **Context Protocol** event bus that lets independent
+ * applications (and third-party implementations) resolve across each other.
  */
-import type { Observable } from 'rxjs'
-import type { Token } from '../model/token.js'
-import type { HostPort } from './host.js'
-import type { MaybePromise } from './storage.js'
+
+import type { Host } from '../model/session'
+import type { TokenLike } from '../model/token'
 
 /**
- * A single resolved scope value. Async provider in-flight promises pass
- * through `value` untouched for the application layer to await.
+ * The fact that a host provides a token.
  *
- * @param T Resolved service type.
+ * The declaration carries no value: values live inside the owning application. `owner` is the
+ * opaque identity of that application.
  */
-export interface ScopeResolution<T = unknown> {
-    /** Resolved value, or the in-flight promise of an async provider. */
-    readonly value: MaybePromise<T>
-    /** Releases the resolution; idempotent. */
-    readonly unsubscribe: () => void
+export interface ProviderDeclaration {
+    /**
+     * The provided token.
+     *
+     * Public tokens are `namespace:name` strings; private tokens keep their object identity and
+     * therefore never leave the application that owns them.
+     */
+    readonly token: TokenLike
+    /** The opaque identity of the application that owns the provider. */
+    readonly owner: object
+    /**
+     * Whether the registration is a multi-value registration.
+     *
+     * `multi: true` registrations are collected by `injectAll` / `injectAll$` only; they never
+     * answer a single-value `inject`.
+     */
+    readonly multi: boolean
 }
 
 /**
- * Driven port resolving tokens along `HostPort.parent` chains. Single-value
- * `request` / `watch` always resolve nearest-wins with no direction; multi
- * `requestAll` / `watchAll` order `bottomUp` (nearest-first, default) or
- * `topDown` (outermost-first), breaking same-scope ties by registration
- * order with depth measured in parent hops.
+ * The `detail` payload of a `context-request` event.
  *
- * `watch` / `watchAll` are cold resolve-once streams: a single value settles
- * on first emit, a multi value settles on the first non-empty snapshot, and
- * an empty snapshot never settles (`single first-emit / multi
- * first-non-empty; empty never settles`). Absence stays pending until a
- * wake-up source provides the token; aborting `signal` completes the stream
- * and drops the pending entry.
+ * The token travels in the normative `context` field so that other Context Protocol
+ * implementations can interoperate.
+ */
+export interface ContextRequestDetail {
+    /** The requested token name (`namespace:name`). */
+    readonly context: string
+    /** Called by the provider that answers the request. */
+    readonly callback: (value: unknown) => void
+    /** `true` when the consumer collects every provider along the chain. */
+    readonly multi?: boolean
+    /**
+     * Termination flag for single-value requests.
+     *
+     * The first valid responder sets it to `true`; later providers skip. Nearest-wins therefore
+     * never depends on `stopPropagation()`.
+     */
+    resolved?: boolean
+}
+
+/** The kinds of Context Protocol announcements a transport can broadcast. */
+export type ContextAnnouncement = 'mount' | 'dispose'
+
+/**
+ * Scope transport and Context Protocol event bus.
  */
 export interface ScopeTransportPort {
     /**
-     * Takes a synchronous snapshot: returns the nearest hit, or null on a
-     * miss without waiting.
+     * Whether this transport sees every provider of the environment.
      *
-     * @param token Token to resolve (string or private).
-     * @param from Host starting the ancestor walk.
-     * @param options Optional `subscribe` flag: P1 reservation only,
-     * tolerated but never consumed in v0.1.0.
-     * @returns The nearest resolution, or null when nothing matches.
+     * An authoritative transport may treat a miss as final. A transport that shares its environment
+     * with other bundles is **not** authoritative: a token it cannot see may still be provided
+     * elsewhere, so the Context Protocol bus has to be asked before the miss becomes final.
      */
-    request<T>(
-        token: Token,
-        from: HostPort,
-        options?: { readonly subscribe?: boolean },
-    ): ScopeResolution<T> | null
+    readonly authoritative: boolean
     /**
-     * Takes a synchronous multi snapshot: 0..N matches, never null. An empty
-     * array is a legal snapshot of the current moment and does not violate
-     * the async first-non-empty rule.
+     * Resolve a raw injection target into a stable host handle.
      *
-     * @param token Token to resolve (string or private).
-     * @param from Host starting the ancestor walk.
-     * @param options Optional direction (`bottomUp` default, `topDown`).
-     * @returns Ordered resolutions, possibly empty.
+     * @param target - The raw target (an element in the browser).
+     * @returns The host handle, or `null` when the target is not supported.
      */
-    requestAll<T>(
-        token: Token,
-        from: HostPort,
-        options?: { readonly direction?: 'bottomUp' | 'topDown' },
-    ): ReadonlyArray<ScopeResolution<T>>
+    hostOf(target: unknown): Host | null
     /**
-     * Cold late-binding stream for a single value: resolves on first emit,
-     * then completes. Absence stays pending until a wake-up provides the
-     * token. Single values are always nearest-wins with no direction.
+     * Whether `descendant` lives inside `ancestor`.
      *
-     * @param token Token to resolve (string or private).
-     * @param from Host starting the ancestor walk.
-     * @param options Optional abort signal; abort completes the stream and
-     * drops the pending entry.
-     * @returns Cold observable emitting the first resolution, then completing.
-     * @example
-     * ```ts
-     * import type { ScopeTransportPort } from './scope-transport.js'
-     * import type { HostPort } from './host.js'
-     *
-     * const awaitTheme = (transport: ScopeTransportPort, from: HostPort): void => {
-     *     transport.watch<string>('app:theme', from).subscribe((resolution) => {
-     *         void resolution.value
-     *     })
-     * }
-     * ```
+     * @param ancestor - The ancestor host.
+     * @param descendant - The candidate descendant host.
+     * @returns `true` when the descendant is inside the ancestor.
      */
-    watch<T>(
-        token: Token,
-        from: HostPort,
-        options?: { readonly signal?: AbortSignal },
-    ): Observable<ScopeResolution<T>>
+    contains(ancestor: Host, descendant: Host): boolean
     /**
-     * Cold late-binding stream for multi values: settles on the first
-     * non-empty snapshot, then completes; empty snapshots never emit and
-     * never settle.
+     * The provider declarations registered for a host.
      *
-     * @param token Token to resolve (string or private).
-     * @param from Host starting the ancestor walk.
-     * @param options Optional direction and abort signal; abort completes the
-     * stream and drops the pending entry.
-     * @returns Cold observable emitting the first non-empty snapshot, then
-     * completing.
+     * @param host - The host to inspect.
+     * @returns The declarations, empty when the host provides nothing.
      */
-    watchAll<T>(
-        token: Token,
-        from: HostPort,
-        options?: { readonly direction?: 'bottomUp' | 'topDown', readonly signal?: AbortSignal },
-    ): Observable<ReadonlyArray<ScopeResolution<T>>>
-}
-
-/**
- * Duck-typing probe for thenables: true when `value` carries a callable
- * `then`. Uses `typeof x.then === 'function'` and never `instanceof`, so
- * cross-realm promises and hand-rolled thenables both match while null,
- * primitives, and non-function `then` values are rejected without throwing.
- *
- * @param value Candidate value to test.
- * @returns True when `value` is promise-like.
- * @example
- * ```ts
- * import { isThenable } from './scope-transport.js'
- *
- * const settled = isThenable({ then: () => {} })
- * ```
- */
-export function isThenable(value: unknown): value is PromiseLike<unknown> {
-    if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
-        return false
-    }
-    return typeof (value as { readonly then?: unknown }).then === 'function'
+    declarationsOf(host: Host): readonly ProviderDeclaration[]
+    /**
+     * Register the provider declarations of a host.
+     *
+     * @param host - The host.
+     * @param declarations - The declarations.
+     */
+    declare(host: Host, declarations: readonly ProviderDeclaration[]): void
+    /**
+     * Remove every declaration of a host.
+     *
+     * @param host - The host.
+     */
+    undeclare(host: Host): void
+    /**
+     * Listen for `context-request` events reaching a host.
+     *
+     * @param host - The host to listen on.
+     * @param handler - The handler invoked with the event detail.
+     * @returns A function that removes the listener.
+     */
+    onRequest(host: Host, handler: (detail: ContextRequestDetail) => void): () => void
+    /**
+     * Dispatch a `context-request` from a host.
+     *
+     * @param host - The host the request originates from.
+     * @param detail - The request detail.
+     */
+    request(host: Host, detail: ContextRequestDetail): void
+    /**
+     * Announce `context-mount` or `context-dispose` on a host.
+     *
+     * @param host - The host.
+     * @param type - Which announcement to publish.
+     * @param token - The keyed identity of the session, or `null` for anonymous sessions.
+     */
+    announce(host: Host, type: ContextAnnouncement, token: string | null): void
+    /**
+     * Observe "some provider became available" notifications.
+     *
+     * @param listener - Invoked when a provider appears anywhere in the environment.
+     * @returns A function that removes the listener.
+     */
+    onProviderChange(listener: () => void): () => void
 }
