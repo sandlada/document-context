@@ -1,7 +1,7 @@
 {
     "name": "@sandlada/document-context",
-    "version": "0.1.0-alpha.0",
-    "description": "Function-first, DOM-hosted IoC container and reactive state library (next generation, layered architecture).",
+    "version": "0.0.2-20261105.a",
+    "description": "Function-first, DOM-hosted IoC and reactive state library (next generation).",
     "author": "Kai Orion",
     "license": "MIT",
     "repository": {
@@ -30,33 +30,33 @@
         "build",
         "README.md",
         "LICENSE",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "CODE_OF_CONDUCT.md",
+        "SECURITY.md"
     ],
+    "engines": {
+        "node": ">=22.12.0"
+    },
     "exports": {
         ".": {
             "types": "./build/index.d.ts",
             "import": "./build/index.js",
             "default": "./build/index.js"
         },
-        "./domain": {
-            "types": "./build/domain/index.d.ts",
-            "import": "./build/domain/index.js",
-            "default": "./build/domain/index.js"
-        },
         "./application": {
             "types": "./build/application/index.d.ts",
             "import": "./build/application/index.js",
             "default": "./build/application/index.js"
         },
+        "./domain": {
+            "types": "./build/domain/index.d.ts",
+            "import": "./build/domain/index.js",
+            "default": "./build/domain/index.js"
+        },
         "./infrastructure/dom": {
             "types": "./build/infrastructure/dom/index.d.ts",
             "import": "./build/infrastructure/dom/index.js",
             "default": "./build/infrastructure/dom/index.js"
-        },
-        "./infrastructure/storage": {
-            "types": "./build/infrastructure/storage/index.d.ts",
-            "import": "./build/infrastructure/storage/index.js",
-            "default": "./build/infrastructure/storage/index.js"
         },
         "./infrastructure/ssr": {
             "types": "./build/infrastructure/ssr/index.d.ts",
@@ -68,8 +68,10 @@
     "scripts": {
         "build": "tsdown",
         "test": "vitest run",
+        "verify:examples": "node scripts/verify-doc-examples.mjs",
         "test:watch": "vitest",
-        "bench": "vitest bench --run bench",
+        "test:browser": "playwright test",
+        "test:e2e:browser": "playwright test",
         "typecheck": "tsc --noEmit",
         "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
         "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
@@ -78,16 +80,14 @@
         "rxjs": "^7.8.0 || ^8.0.0"
     },
     "devDependencies": {
+        "@playwright/test": "^1.64.1",
         "@vitest/coverage-v8": "^4.1.11",
         "happy-dom": "^20.11.6",
         "rxjs": "^7.8.2",
-        "tinybench": "^2.9.0",
         "tsdown": "^0.22.14",
         "typescript": "^7.0.2",
+        "vite": "^8.3.5",
         "vitest": "^4.1.11"
-    },
-    "engines": {
-        "node": ">=22.12.0"
     },
     "publishConfig": {
         "access": "public"

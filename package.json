@@ -1,7 +1,7 @@
 {
     "name": "document-context-workspace",
     "private": true,
-    "version": "0.1.0-alpha.0",
+    "version": "0.0.2-20261105.a",
     "description": "Monorepo for @sandlada/document-context (v0.1 layered architecture).",
     "author": "Kai Orion",
     "license": "MIT",
@@ -17,6 +17,8 @@
         "build": "pnpm --filter @sandlada/document-context build",
         "test": "pnpm --filter @sandlada/document-context test",
         "test:watch": "pnpm --filter @sandlada/document-context test:watch",
+        "test:browser": "pnpm --filter @sandlada/document-context test:browser",
+        "test:e2e:browser": "pnpm --filter @sandlada/document-context test:e2e:browser",
         "typecheck": "pnpm --filter @sandlada/document-context typecheck",
         "typecheck:build": "pnpm --filter @sandlada/document-context typecheck:build",
         "typecheck:test": "pnpm --filter @sandlada/document-context typecheck:test",
