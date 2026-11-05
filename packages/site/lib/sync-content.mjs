@@ -32,26 +32,7 @@ import {
 
 const repositoryFileURL = (file) => `${repositoryUrl}/blob/main/${file}`;
 
-const narrativeDocuments = [
-    {
-        source: 'docs/archive/v0.0.1/core-concepts.md',
-        target: 'src/content/docs/core-concepts.md',
-        description:
-            'Two-phase blueprint and mount model plus the data-last curried verbs behind every operation.',
-    },
-    {
-        source: 'docs/archive/v0.0.1/lifecycles.md',
-        target: 'src/content/docs/lifecycles.md',
-        description:
-            'Four cooperating lifecycles: DOM host, session state machine, services, and state bridge.',
-    },
-    {
-        source: 'docs/archive/v0.0.1/w3c-protocol.md',
-        target: 'src/content/docs/w3c-protocol.md',
-        description:
-            'W3C Context Protocol scope resolution across Shadow DOM, with streaming subscriptions.',
-    },
-];
+const narrativeDocuments = [];
 
 function specDocuments() {
     return modules.flatMap((module) => {
@@ -273,9 +254,11 @@ export function syncContent({ force = false } = {}) {
     const prunedNarrative = pruneOwnedFiles(
         contentDocsDirectory,
         new Set([
-            ...narrativeDocuments.map((document) => document.target.split('/').at(-1)),
+            'core-concepts.md',
             'getting-started.md',
             'index.mdx',
+            'lifecycles.md',
+            'w3c-protocol.md',
         ]),
     );
 

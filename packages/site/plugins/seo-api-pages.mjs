@@ -18,16 +18,27 @@ import { apiPages } from '../lib/site.mjs';
 
 const apiDirectory = fileURLToPath(new URL('../src/content/docs/api', import.meta.url));
 
+function collectMarkdownFiles(dir, prefix = '') {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const files = [];
+
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            files.push(...collectMarkdownFiles(join(dir, entry.name), `${prefix}${entry.name}/`));
+        } else if (entry.name.endsWith('.md')) {
+            files.push(`${prefix}${entry.name.slice(0, -'.md'.length)}`);
+        }
+    }
+
+    return files.sort();
+}
+
 const seoApiPages = {
     name: 'seo-api-pages',
     hooks: {
         'config:setup'({ logger }) {
-            const pages = readdirSync(apiDirectory)
-                .filter((file) => file.endsWith('.md'))
-                .sort();
-            const missing = pages
-                .map((file) => file.slice(0, -'.md'.length))
-                .filter((module) => !(module in apiPages));
+            const modules = collectMarkdownFiles(apiDirectory);
+            const missing = modules.filter((module) => !(module in apiPages));
 
             if (missing.length > 0) {
                 throw new Error(
@@ -36,10 +47,9 @@ const seoApiPages = {
                 );
             }
 
-            for (const file of pages) {
-                const module = file.slice(0, -'.md'.length);
+            for (const module of modules) {
                 const { title, description } = apiPages[module];
-                const path = join(apiDirectory, file);
+                const path = join(apiDirectory, `${module}.md`);
                 const contents = readFileSync(path, 'utf8');
 
                 writeFileSync(
@@ -52,7 +62,7 @@ const seoApiPages = {
                 );
             }
 
-            logger.info(`Applied curated search metadata to ${pages.length} generated API pages.`);
+            logger.info(`Applied curated search metadata to ${modules.length} generated API pages.`);
         },
     },
 };

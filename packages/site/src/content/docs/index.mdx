@@ -44,41 +44,63 @@ Components — share services and state through the DOM tree itself, using the W
 
 ## Why anchor to the DOM?
 
-- **Space is scope.** Resolving a dependency walks up `parentElement`, so nested UI naturally inherits parent services with no manual child containers.
+- **Space is scope.** Resolving a dependency walks up the DOM ancestor chain, so nested UI naturally inherits parent services with zero container boilerplate.
 - **Zero-leak by construction.** Sessions live and die with their host node; disconnects are confirmed in a microtask and subscriptions are torn down automatically.
-- **State is the view.** `withBridge` projects reactive state onto `dataset`, `style`, `aria-*`, and form values with loop guards and cursor preservation.
-- **One bus for every framework.** React, Vue, Svelte, and vanilla scripts meet at native `HTMLElement` and `context-request` events — no shared heap reference required.
+- **RxJS first-class.** State, lifecycle, and errors are available as RxJS observables (`state$`, `lifecycle$`, `errors$`, `session$`).
+- **One bus for every framework.** React, Vue, Svelte, Lit, and vanilla scripts meet at native `HTMLElement` and W3C Context Protocol events — no shared module instance required.
 
 ## A complete example
 
 ```ts
-import { createContext, pipe, withBridge, withStorage, mount, update } from '@sandlada/document-context'
+import {
+    createContext,
+    defineToken,
+    mount,
+    pipe,
+    provide,
+    subscribe$,
+    update,
+} from '@sandlada/document-context'
 
-const themeBlueprint = pipe(
-    createContext({ isDark: false }),
-    withBridge({ properties: { isDark: 'dataset.themeDark' } }),
-    withStorage({ adapter: 'localStorage', key: 'app-theme' })
+interface CounterState {
+    readonly count: number
+}
+
+interface CounterService {
+    increment(): void
+}
+
+const counterToken = defineToken<CounterService>('public')('app:counter')
+
+const blueprint = pipe(
+    createContext<CounterState>({ count: 0 }),
+    provide(counterToken, ({ session }) => ({
+        increment: () => update<CounterState>((s) => ({ count: s.count + 1 }))(session),
+    })),
 )
 
-const session = mount(themeBlueprint)(document.documentElement)
-const toggle = update<{ isDark: boolean }>((s) => ({ isDark: !s.isDark }))
-toggle(session)
-```
+const host = document.getElementById('app')!
+const session = mount(blueprint)(host)
+await session.ready
 
-`isDark` flows to `data-theme-dark`, persists across reloads, and any island holding the session — or a
-child node resolving through it — sees the same state.
+subscribe$<CounterState>((state) => {
+    host.textContent = `Count: ${state.count}`
+})(session)
+
+update<CounterState>((s) => ({ count: s.count + 1 }))(session)
+```
 
 ## What ships
 
-- **5 focused subpaths** — `core`, `bridge`, `storage`, `dom`, `signals`, so tree-shaking stays total.
+- **Strict layering** — `domain` (zero DOM, zero I/O) ← `application` (composition root, session runtime) ← `infrastructure` (`dom`, `ssr`).
 - **Two-phase purity** — Phase 1 blueprint composition has zero DOM, zero I/O, zero listeners.
-- **W3C-native DI** — `inject`, `injectAsync`, `injectAll` over composed `context-request` events.
-- **Four-dimension lifecycles** — DOM host, session machine, services, and state/bridge/storage coordinated.
+- **Late-binding DI** — `inject`, `inject$`, `injectAll`, `injectAll$` over composed W3C Context Protocol events.
+- **SSR-ready** — Per-request applications through `createSsrApplication()` with server placeholder hosts.
 
 ## Install
 
 ```bash
-npm i @sandlada/document-context
+npm i @sandlada/document-context rxjs
 ```
 
 :::caution[ESM only]

@@ -57,14 +57,6 @@ const moduleRegistry = [
             'Mount boundary, scope resolution, ContextRequestEvent transport, and zero-leak observer wiring.',
     },
     {
-        name: 'infrastructure/storage',
-        specDescription:
-            'Persistence adapters, hydration, version migration, and storage sync.',
-        apiTitle: 'Infrastructure: storage',
-        apiDescription:
-            'persist operator wiring, localStorage/sessionStorage adapters, and cross-tab sync.',
-    },
-    {
         name: 'infrastructure/ssr',
         specDescription:
             'SSR serialization, null host, and hydration payload resolution.',

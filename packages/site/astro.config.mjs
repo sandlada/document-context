@@ -144,7 +144,16 @@ export default defineConfig({
                 // No archived versions yet (versions.json is empty): skip the
                 // versions plugin until `pnpm run version:new` creates the first
                 // snapshot, since it requires at least one version.
-                ...(versions.length > 0 ? [starlightVersions({ versions })] : []),
+                ...(versions.length > 0
+                    ? [
+                          starlightVersions({
+                              current: {
+                                  label: '0.0.2-20261105.a (latest)',
+                              },
+                              versions,
+                          }),
+                      ]
+                    : []),
                 starlightLinksValidator(),
             ],
             sidebar,

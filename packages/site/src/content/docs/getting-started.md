@@ -9,7 +9,7 @@ a pure blueprint, mount it on an element, then read and update state through cur
 ## Installation
 
 ```bash
-npm i @sandlada/document-context
+npm i @sandlada/document-context rxjs
 ```
 
 :::caution[ESM only]
@@ -19,43 +19,56 @@ The package cannot be loaded with `require()`. Your project must use ESM (`impor
 ## Quick start
 
 ```ts
-import { createContext, mount, pipe, select, update } from '@sandlada/document-context'
-import { withBridge } from '@sandlada/document-context/bridge'
+import {
+    createContext,
+    mount,
+    pipe,
+    read,
+    subscribe$,
+    update,
+} from '@sandlada/document-context'
 
+interface AppState {
+    readonly count: number
+}
+
+// Phase 1: Pure blueprint (zero DOM, zero side-effects)
 const blueprint = pipe(
-    createContext({ count: 0 }),
-    withBridge({ properties: { count: 'dataset.count' } })
+    createContext<AppState>({ count: 0 }),
 )
 
-const session = mount(blueprint)(document.getElementById('counter-box')!)
+// Phase 2: Mount boundary (returns session handle synchronously)
+const host = document.getElementById('counter-box')!
+const session = mount(blueprint)(host)
+await session.ready
 
-const getCount = select((s: { count: number }) => s.count)
-const increment = update<{ count: number }>((s) => ({ count: s.count + 1 }))
+// Observe state updates via RxJS
+subscribe$<AppState>((state) => {
+    host.textContent = `Count: ${state.count}`
+})(session)
+
+// Update state using pure curried verbs
+const increment = update<AppState>((s) => ({ count: s.count + 1 }))
 increment(session)
-console.log(getCount(session))
+
+// Synchronous snapshot read
+const count = read<AppState, number>((s) => s.count)(session)
+console.log('Current count:', count)
 ```
 
-`count` renders to `data-count` on `#counter-box` automatically. Detaching the node tears the session
-down; a keyed session (`mount(blueprint, { key: 'counter-box' })`) instead parks for a grace period
-(`suspensionTtlMs`, default 50ms) and resuscitates with full state when the same key is mounted on a
-replacement node — an HTMX swap or framework re-render keeps the session identity, services, and bridges.
+Detaching the node tears the session down; a keyed session (`mount(blueprint, { token: 'counter-box' })`)
+instead suspends for a grace period (`suspensionTtlMs`, default 5000ms) and resuscitates with full state
+when the same key is mounted on a replacement node.
 
 ## Import paths
 
-The root barrel re-exports everything. Import from the subpath that matches the capability you need to
-keep bundles lean.
+The root barrel re-exports wired verbs with a default DOM application. Subpaths let you import from specific layers
+to enforce architectural boundaries or configure custom applications.
 
 | Import path | Contents |
 | --- | --- |
-| `@sandlada/document-context` | Full barrel: core, bridge, storage, dom, signals. |
-| `@sandlada/document-context/core` | `createContext`, `pipe`, `mount`, `select`, `update`, `subscribe`, `dispose`. |
-| `@sandlada/document-context/bridge` | `withBridge` bidirectional property sync. |
-| `@sandlada/document-context/storage` | `withStorage` persistence and hydration. |
-| `@sandlada/document-context/dom` | `inject`, `injectAsync`, `injectAll`, `ContextRequestEvent`. |
-| `@sandlada/document-context/signals` | `toSignal` TC39 Signals adapter. |
-
-## Next steps
-
-- [Core concepts](/core-concepts/) — the two-phase model and data-last verbs.
-- [Lifecycles](/lifecycles/) — what happens after mount.
-- [API Reference](/api/) — every export, generated from the source JSDoc.
+| `@sandlada/document-context` | Root barrel: Phase 1 blueprint operators and default-application Phase 2 verbs. |
+| `@sandlada/document-context/domain` | Pure domain model, port contracts, and errors (zero DOM, zero I/O). |
+| `@sandlada/document-context/application` | Composition root (`createApplication`), session verbs, and lifecycle state machines. |
+| `@sandlada/document-context/infrastructure/dom` | DOM host adapter, centralized observer, and W3C Context Protocol bus. |
+| `@sandlada/document-context/infrastructure/ssr` | Server placeholder host and per-request application (`createSsrApplication`). |

@@ -14,14 +14,11 @@
 // Runs in `config:setup` after `starlight-typedoc` regenerates
 // `src/content/docs/api/`. Archived versions under a `versions.json` slug keep
 // their frozen copies and are never touched.
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import ts from 'typescript';
 import { writeFileIfChanged } from '../lib/io.mjs';
 import { modules, packageRoot, siteRoot } from '../lib/site.mjs';
-
-const require = createRequire(import.meta.url);
-const ts = require('typescript');
 
 const apiDirectory = join(siteRoot, 'src/content/docs/api');
 const srcDirectory = join(packageRoot, 'src');
@@ -39,8 +36,54 @@ function hasExportModifier(node) {
     return (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
 }
 
+function collectSourceFiles(dir) {
+    if (!existsSync(dir)) {
+        return [];
+    }
+
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const files = [];
+
+    for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...collectSourceFiles(fullPath));
+        } else if (
+            entry.name.endsWith('.ts') &&
+            !entry.name.endsWith('.d.ts') &&
+            entry.name !== 'index.ts' &&
+            !entry.name.includes('.test.') &&
+            !entry.name.includes('.spec.') &&
+            !entry.name.includes('.bench.')
+        ) {
+            files.push(fullPath);
+        }
+    }
+
+    return files;
+}
+
+function collectMarkdownFiles(dir, prefix = '') {
+    if (!existsSync(dir)) {
+        return [];
+    }
+
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const files = [];
+
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            files.push(...collectMarkdownFiles(join(dir, entry.name), `${prefix}${entry.name}/`));
+        } else if (entry.name.endsWith('.md')) {
+            files.push(`${prefix}${entry.name.slice(0, -'.md'.length)}`);
+        }
+    }
+
+    return files.sort();
+}
+
 /**
- * Indexes every exported function declaration in `src/<module>/*.ts` by
+ * Indexes every exported function declaration in module source files by
  * `module/name`. Overloads win over the implementation signature; `const`
  * arrow functions are recorded in `d.ts` style (`export const f: () => T;`).
  */
@@ -48,25 +91,12 @@ function collectDeclarations() {
     const collected = new Map();
 
     for (const module of modules) {
-        let files;
+        const files = collectSourceFiles(join(srcDirectory, module));
 
-        try {
-            files = readdirSync(join(srcDirectory, module));
-        } catch {
-            continue;
-        }
-
-        for (const file of files) {
-            if (!file.endsWith('.ts') || file.endsWith('.d.ts')) {
-                continue;
-            }
-
-            if (file === 'index.ts' || file.includes('.spec.') || file.includes('.bench.')) {
-                continue;
-            }
-
-            const content = readFileSync(join(srcDirectory, module, file), 'utf8');
-            const source = ts.createSourceFile(file, content, ts.ScriptTarget.ESNext, true);
+        for (const filePath of files) {
+            const fileName = basename(filePath);
+            const content = readFileSync(filePath, 'utf8');
+            const source = ts.createSourceFile(fileName, content, ts.ScriptTarget.ESNext, true);
             const overloads = new Map();
             const fallback = new Map();
 
@@ -336,15 +366,12 @@ const overloadCodeblocks = {
     hooks: {
         'config:setup'({ logger }) {
             const declarations = collectDeclarations();
-            const pages = readdirSync(apiDirectory)
-                .filter((file) => file.endsWith('.md'))
-                .sort();
+            const pages = collectMarkdownFiles(apiDirectory);
             let functions = 0;
             let updated = 0;
 
-            for (const file of pages) {
-                const module = file.slice(0, -'.md'.length);
-                const path = join(apiDirectory, file);
+            for (const module of pages) {
+                const path = join(apiDirectory, `${module}.md`);
                 const before = readFileSync(path, 'utf8');
                 const { markdown: after, functions: count } = transformPage(module, before, declarations);
                 functions += count;

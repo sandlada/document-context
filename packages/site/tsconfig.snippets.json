@@ -4,8 +4,11 @@
         "noEmit": true,
         "skipLibCheck": true,
         "paths": {
-            "@sandlada/document-context": ["../src/index.ts"],
-            "@sandlada/document-context/*": ["../src/*/index.ts"]
+            "@sandlada/document-context": ["../document-context/src/index.ts"],
+            "@sandlada/document-context/domain": ["../document-context/src/domain/index.ts"],
+            "@sandlada/document-context/application": ["../document-context/src/application/index.ts"],
+            "@sandlada/document-context/infrastructure/dom": ["../document-context/src/infrastructure/dom/index.ts"],
+            "@sandlada/document-context/infrastructure/ssr": ["../document-context/src/infrastructure/ssr/index.ts"]
         }
     },
     "include": ["src/snippets/**/*.ts"],
