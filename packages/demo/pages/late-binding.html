@@ -28,22 +28,21 @@
         <pre>&lt;script type="importmap"&gt;
 {
     "imports": {
-        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0",
-        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0/domain"
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.0.2-20261105.a",
+        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.0.2-20261105.a/domain"
     }
 }
 &lt;/script&gt;</pre>
     </details>
 
     <script type="module">
-        import { createContext, inject, mount, pipe, provide } from '@sandlada/document-context'
-        import { defineToken } from '@sandlada/document-context/domain'
+        import { createContext, defineToken, inject, mount, pipe, provide } from '@sandlada/document-context'
 
-        const greeterToken = defineToken('demo:greeter')
+        const greeterToken = defineToken('public')('demo:greeter')
 
         const blueprint = pipe(
             createContext({ scope: 'late' }),
-            provide(greeterToken, async () => ({ greet: (name) => `hello, ${name}!` })),
+            provide(greeterToken, () => ({ greet: (name) => `hello, ${name}!` })),
         )
 
         // Requested BEFORE mount: this promise waits for the provider to appear.
@@ -54,7 +53,8 @@
         })
 
         document.getElementById('mount-now').addEventListener('click', async () => {
-            await mount(blueprint)(document.getElementById('late-parent'))
+            const session = mount(blueprint)(document.getElementById('late-parent'))
+            await session.ready
         })
     </script>
 </body>

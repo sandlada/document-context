@@ -15,7 +15,6 @@ export default defineConfig({
                 counter: resolve(root, 'pages/counter.html'),
                 di: resolve(root, 'pages/di.html'),
                 'late-binding': resolve(root, 'pages/late-binding.html'),
-                persist: resolve(root, 'pages/persist.html'),
             },
         },
     },

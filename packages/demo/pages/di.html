@@ -33,32 +33,32 @@
         <pre>&lt;script type="importmap"&gt;
 {
     "imports": {
-        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0",
-        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.1.0-alpha.0/domain"
+        "@sandlada/document-context": "https://esm.sh/@sandlada/document-context@0.0.2-20261105.a",
+        "@sandlada/document-context/domain": "https://esm.sh/@sandlada/document-context@0.0.2-20261105.a/domain"
     }
 }
 &lt;/script&gt;</pre>
     </details>
 
     <script type="module">
-        import { createContext, inject, mount, pipe, provide } from '@sandlada/document-context'
-        import { defineToken } from '@sandlada/document-context/domain'
+        import { createContext, defineToken, inject, mount, pipe, provide } from '@sandlada/document-context'
 
-        const loggerToken = defineToken('demo:logger')
+        const loggerToken = defineToken('public')('demo:logger')
 
         const appBlueprint = pipe(
             createContext({ scope: 'app' }),
-            provide(loggerToken, async () => ({ prefix: '[app]' })),
+            provide(loggerToken, () => ({ prefix: '[app]' })),
         )
         const plainBlueprint = pipe(createContext({ scope: 'plain' }))
         const overrideBlueprint = pipe(
             createContext({ scope: 'override' }),
-            provide(loggerToken, async () => ({ prefix: '[section]' })),
+            provide(loggerToken, () => ({ prefix: '[section]' })),
         )
 
-        await mount(appBlueprint)(document.getElementById('app-scope'))
-        await mount(plainBlueprint)(document.getElementById('inherited-box'))
-        await mount(overrideBlueprint)(document.getElementById('override-box'))
+        const appSession = mount(appBlueprint)(document.getElementById('app-scope'))
+        const plainSession = mount(plainBlueprint)(document.getElementById('inherited-box'))
+        const overrideSession = mount(overrideBlueprint)(document.getElementById('override-box'))
+        await Promise.all([appSession.ready, plainSession.ready, overrideSession.ready])
 
         // Inject from a descendant element: resolution walks up the DOM scope chain.
         const inherited = await inject(loggerToken)(document.getElementById('inherited-box'))
