@@ -22,8 +22,6 @@
         "typecheck": "pnpm --filter @sandlada/document-context typecheck",
         "typecheck:build": "pnpm --filter @sandlada/document-context typecheck:build",
         "typecheck:test": "pnpm --filter @sandlada/document-context typecheck:test",
-        "demo:dev": "pnpm --filter @sandlada/demo dev",
-        "demo:build": "pnpm --filter @sandlada/demo build",
         "site:dev": "pnpm --filter site dev",
         "site:build": "pnpm --filter site build",
         "site:preview": "pnpm --filter site preview",

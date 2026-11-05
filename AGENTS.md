@@ -76,7 +76,7 @@ pnpm install
 pnpm test        # vitest projects (unit / integration / e2e)
 pnpm run build   # tsdown → packages/document-context/build
 pnpm run typecheck
-pnpm run demo:dev
+pnpm run site:dev
 ```
 
 - Single file: `pnpm exec vitest run --project unit path/to/file.unit-test.ts` (from `packages/document-context`, or `--project integration` / `--project e2e`)
