@@ -32,7 +32,8 @@
         "LICENSE",
         "CHANGELOG.md",
         "CODE_OF_CONDUCT.md",
-        "SECURITY.md"
+        "SECURITY.md",
+        "CONTRIBUTING.md"
     ],
     "engines": {
         "node": ">=22.12.0"

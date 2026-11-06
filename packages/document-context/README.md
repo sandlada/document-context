@@ -151,27 +151,9 @@ Behaviour that the design corpus leaves to the implementation phase, decided her
 | [`docs/archive/0.0.2`](../../docs/archive/0.0.2) | The design corpus for the next generation — **source of truth** |
 | [`docs/archive/0.0.2/REVIEW.md`](../../docs/archive/0.0.2/REVIEW.md) | Gap review and architecture recommendations for that corpus |
 
-## Development
+## Contributing
 
-```bash
-pnpm install
-pnpm test          # vitest projects (unit / integration / e2e)
-pnpm run build     # tsdown → build
-pnpm run typecheck
-pnpm run demo:dev
-```
-
-Node **≥ 22.12**.
-
-Package-level checks (from `packages/document-context`):
-
-```bash
-pnpm exec tsc --noEmit -p tsconfig.json       # source types
-pnpm exec tsc --project tsconfig.build.json --noEmit
-pnpm exec tsc --project tsconfig.test.json --noEmit
-pnpm exec vitest run                          # unit → integration → e2e
-pnpm exec tsdown                              # build
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development workflows, project commands, and verification steps.
 
 ## License
 

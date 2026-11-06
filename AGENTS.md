@@ -13,7 +13,7 @@ System instructions and coding conventions for AI agents working on `@sandlada/d
 
 ## 1. Project overview
 
-The next generation ships from [`packages/document-context`](./packages/document-context). Canonical **README**, **LICENSE**, **CHANGELOG**, **CODE_OF_CONDUCT**, and **SECURITY** live in that directory; repository root copies are **symlinks** for GitHub and npm discovery—edit the package files only.
+The next generation ships from [`packages/document-context`](./packages/document-context). Canonical **README**, **CONTRIBUTING**, **LICENSE**, **CHANGELOG**, **CODE_OF_CONDUCT**, and **SECURITY** live in that directory; repository root copies are **symlinks** for GitHub and npm discovery—edit the package files only.
 
 > **Current phase**: the next generation is **landed and cut over** in [`packages/document-context`](./packages/document-context) (`0.0.2-20261105.a`) against [`docs/archive/0.0.2/`](./docs/archive/0.0.2/README.md) — `domain` ← `application` ← `infrastructure`, one composition root, three vitest projects. Root verification scripts target `@sandlada/document-context`.
 
