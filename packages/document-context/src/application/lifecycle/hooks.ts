@@ -49,7 +49,7 @@ export function runHooksSync(session: SessionRuntime<any>, type: HookType): void
             if (typeof result === 'function') {
                 session.cleanups.push(result)
             } else if (result instanceof Promise) {
-                session.pendingCleanups.push(result.catch(() => undefined))
+                session.pendingCleanups.push(reportRejectedHook(session, result, 'Hook failed.'))
             }
         } catch (error) {
             session.reportError(
@@ -86,7 +86,9 @@ export function runDisposeHooks(session: SessionRuntime<any>): void {
                     )
                 }
             } else if (result instanceof Promise) {
-                session.pendingCleanups.push(result.catch(() => undefined))
+                session.pendingCleanups.push(
+                    reportRejectedHook(session, result, 'Dispose hook failed.'),
+                )
             }
         } catch (error) {
             session.reportError(
@@ -116,6 +118,23 @@ export function runCleanups(session: SessionRuntime<any>): void {
         }
     }
     session.cleanups.length = 0
+}
+
+function reportRejectedHook(
+    session: SessionRuntime<any>,
+    result: Promise<unknown>,
+    message: string,
+): Promise<unknown> {
+    return result.then(
+        () => undefined,
+        (error: unknown) => {
+            session.reportError(
+                new DocumentContextError('HOOK_ERROR', message, {
+                    details: { cause: error },
+                }),
+            )
+        },
+    )
 }
 
 async function invokeHook(

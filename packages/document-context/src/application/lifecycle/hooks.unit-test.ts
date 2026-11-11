@@ -51,6 +51,26 @@ describe('hook execution', () => {
         expect(order).toEqual(['dispose', 'cleanup'])
     })
 
+    it('[LC #9] onDispose 的 Promise 拒絕進入 errors$', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onDispose(() => Promise.reject(new Error('dispose failed'))),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const codes: string[] = []
+        session.errors$.subscribe((error) => codes.push(error.code))
+        app.dispose(session)
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(session.status).toBe('disposed')
+        expect(codes).toContain('HOOK_ERROR')
+    })
+
     it('[LC #8] 清理函式排在 onDispose 之前且不因暫停執行', async () => {
         const order: string[] = []
         const blueprint = pipe(
