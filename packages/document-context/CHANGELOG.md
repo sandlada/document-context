@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - If the new host disconnects while that promise is still pending, the session stays suspended and can be resumed later.
 - The fake host honors `AbortSignal` on `host.on`: an already aborted signal adds no listener, and a later abort removes it.
 - `attach` reports adoption through `onAdopt` only. A host that stays connected does not also emit `onConnect`.
+- `setDefaultApplication` releases the previous default application and the DOM adapter this module created for it.
 
 ### Changed
 

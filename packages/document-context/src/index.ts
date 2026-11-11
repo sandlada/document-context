@@ -32,7 +32,7 @@ import { createApplication } from './application/application'
 import type { MountOptions } from './application/api/mount'
 import type { InjectOptions } from './application/api/inject'
 import type { InjectAllOptions } from './application/api/inject-all'
-import { createDomHostAdapter, type DomHost } from './infrastructure/dom/host-adapter'
+import { createDomHostAdapter, type DomHost, type DomHostAdapter } from './infrastructure/dom/host-adapter'
 
 // ---------------------------------------------------------------------------
 // Phase 1 — pure blueprint operators. They are not bound to any application.
@@ -103,6 +103,8 @@ export type {
 // ---------------------------------------------------------------------------
 
 let defaultApplication: Application<DomHost, Element> | null = null
+/** The DOM adapter created for the lazy default application, when this module owns it. */
+let ownedAdapter: DomHostAdapter | null = null
 
 /**
  * The default application.
@@ -121,7 +123,8 @@ let defaultApplication: Application<DomHost, Element> | null = null
  */
 export function getDefaultApplication(): Application<DomHost, Element> {
     if (defaultApplication === null) {
-        defaultApplication = createApplication<DomHost, Element>({ host: createDomHostAdapter() })
+        ownedAdapter = createDomHostAdapter()
+        defaultApplication = createApplication<DomHost, Element>({ host: ownedAdapter })
     }
     return defaultApplication
 }
@@ -138,9 +141,19 @@ export function getDefaultApplication(): Application<DomHost, Element> {
  * const app = getDefaultApplication()
  * ```
  *
+ * Replacing or clearing the default application releases the previous one, so its sessions are
+ * disposed. The DOM adapter created for the lazy default application is released too, which
+ * removes its `context-mount` listener.
+ *
  * @param application - The application to use, or `null` to rebuild it on the next call.
  */
 export function setDefaultApplication(application: Application<DomHost, Element> | null): void {
+    const previous = defaultApplication
+    if (previous !== null && previous !== application) {
+        previous.release()
+        ownedAdapter?.release()
+        ownedAdapter = null
+    }
     defaultApplication = application
 }
 
