@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
-import { onMount, onResume } from '../api/hooks'
+import { onMount, onResume, onSuspend } from '../api/hooks'
 import { createApplication } from '../application'
 import { createTestApplication } from '../testing/fakes'
 
@@ -266,6 +266,34 @@ describe('resume', () => {
         adapter.clock.advance(1)
         expect(session.status).toBe('disposed')
         expect(reasons).toEqual(['ttl'])
+    })
+
+    it('[LC #6] suspensionTtlMs 為 0 時確認斷線直接銷毀且不暫停', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const hooks: string[] = []
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onSuspend(() => {
+                    hooks.push('suspend')
+                }),
+            ),
+            { token: 'app:zero-ttl', suspensionTtlMs: 0 },
+        )(host)
+        await session.ready
+
+        const events: string[] = []
+        session.lifecycle$.subscribe((event) => {
+            events.push(event.type === 'disposed' ? `disposed:${event.reason}` : event.type)
+        })
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+
+        expect(session.status).toBe('disposed')
+        expect(hooks).toEqual([])
+        expect(events).toEqual(['active', 'disposed:disconnect'])
     })
 
     it('[LC #6] pinned 不受 TTL 影響', async () => {

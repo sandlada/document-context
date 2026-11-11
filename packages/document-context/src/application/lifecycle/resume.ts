@@ -28,11 +28,6 @@ function armSuspensionTimer(runtime: ApplicationRuntime, session: SessionRuntime
         enforceSuspensionCap(runtime)
         return
     }
-    if (session.suspensionTtlMs === 0) {
-        session.dispose('ttl')
-        runtime.notifySessionsChanged()
-        return
-    }
     const cancel = runtime.ports.host.scheduler.timeout(() => {
         session.dispose('ttl')
         runtime.notifySessionsChanged()
@@ -49,6 +44,10 @@ function armSuspensionTimer(runtime: ApplicationRuntime, session: SessionRuntime
  */
 export function suspendSession(runtime: ApplicationRuntime, session: SessionRuntime<any>): void {
     if (session.status !== 'active' && session.status !== 'starting') {
+        return
+    }
+    if (session.token !== null && session.suspensionTtlMs === 0 && !session.pinned) {
+        session.dispose('disconnect')
         return
     }
     const token = session.token
