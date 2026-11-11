@@ -299,6 +299,47 @@ export function dispatchMultiRequest(
     return groups
 }
 
+const factoryMarkers = new WeakMap<ProviderRegistration, string>()
+let factoryMarkerSerial = 0
+
+/**
+ * A name that shows up on the async stack while this registration's factory is running.
+ * An outside caller joining an in-flight promise does not have this frame; a factory that
+ * awaited and then called back into the same registration does.
+ *
+ * @param registration - The registration whose factory is running.
+ * @returns The marker.
+ */
+function factoryMarker(registration: ProviderRegistration): string {
+    let marker = factoryMarkers.get(registration)
+    if (marker === undefined) {
+        factoryMarkerSerial += 1
+        marker = `documentContextFactory#${factoryMarkerSerial}`
+        factoryMarkers.set(registration, marker)
+    }
+    return marker
+}
+
+/**
+ * Whether `registration`'s factory is an ancestor of the current call.
+ *
+ * @param registration - The registration being requested again.
+ * @returns `true` when the wait has circled back to that factory.
+ */
+function factoryIsAncestor(registration: ProviderRegistration): boolean {
+    const previousLimit = Error.stackTraceLimit
+    Error.stackTraceLimit = Number.POSITIVE_INFINITY
+    const stack = new Error().stack
+    Error.stackTraceLimit = previousLimit
+    if (stack === undefined) {
+        return false
+    }
+    const marker = factoryMarker(registration)
+    return stack.includes(`${marker} `)
+        || stack.includes(`${marker}(`)
+        || stack.includes(`${marker}@`)
+}
+
 /**
  * Resolve the value of a provider registration, honouring its lifecycle.
  *
@@ -333,6 +374,12 @@ export async function resolveProviderValue(
                 cache.delete(key)
             }
         })
+    } else if (session.resolving.has(registration) && factoryIsAncestor(registration)) {
+        throw new DocumentContextError(
+            'CIRCULAR_DEPENDENCY',
+            `Circular dependency detected for token "${tokenName(registration.token)}".`,
+            { details: { token: tokenName(registration.token) } },
+        )
     }
     return slot.promise
 }
@@ -379,7 +426,17 @@ async function runFactory(
                 return resolved.get(requested) as U
             },
         }
-        return await registration.factory(tools)
+        const marker = factoryMarker(registration)
+        const drive: Record<string, () => Promise<unknown>> = {
+            async [marker](): Promise<unknown> {
+                return await registration.factory(tools)
+            },
+        }
+        const run = drive[marker]
+        if (run === undefined) {
+            return await registration.factory(tools)
+        }
+        return await run()
     } finally {
         session.resolving.delete(registration)
     }

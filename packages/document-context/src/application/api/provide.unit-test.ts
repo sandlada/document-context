@@ -105,6 +105,67 @@ describe('provide', () => {
         expect(session.status).toBe('disposed')
     })
 
+    it('[SCOPE #8] 動態等待繞回自己以 CIRCULAR_DEPENDENCY 拒絕', async () => {
+        const a = defineToken<string>('public')('app:dynamic-a')
+        const b = defineToken<string>('public')('app:dynamic-b')
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    a,
+                    async ({ session: current }) => {
+                        await Promise.resolve()
+                        return app.inject(b)(current)
+                    },
+                    { eager: true },
+                ),
+                provide(b, ({ session: current }) => app.inject(a)(current)),
+            ),
+        )(adapter.createHost())
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const outcome = await Promise.race([
+            session.ready.then(
+                () => 'ready',
+                (error: unknown) => error,
+            ),
+            new Promise<string>((resolve) => {
+                timer = setTimeout(() => resolve('timeout'), 300)
+            }),
+        ])
+        if (timer !== undefined) {
+            clearTimeout(timer)
+        }
+
+        expect(outcome).toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
+        expect(session.status).toBe('disposed')
+    })
+
+    it('[SCOPE #10] 另一個工廠可以等待已開始的工廠', async () => {
+        const a = defineToken<string>('public')('app:started-a')
+        const b = defineToken<string>('public')('app:started-b')
+        const { app, adapter } = createTestApplication()
+        let release: (() => void) | undefined
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(a, () => new Promise<string>((resolve) => {
+                    release = () => resolve('a')
+                })),
+                provide(b, ({ session: current }) => app.inject(a)(current)),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const pending = app.inject(a)(session)
+        const throughB = app.inject(b)(session)
+        release?.()
+
+        await expect(throughB).resolves.toBe('a')
+        await expect(pending).resolves.toBe('a')
+    })
+
     it('[SCOPE #8] 工廠同步 inject 自己以 CIRCULAR_DEPENDENCY 拒絕', async () => {
         const self = defineToken<string>('public')('app:self')
         const { app, adapter } = createTestApplication()

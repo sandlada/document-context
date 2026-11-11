@@ -49,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Moving a connected element inside the document updates `session$` to the new nearest session without treating the move as a disconnect.
 - A pending element `inject` resolves when that element is moved under an already active provider, instead of waiting for a new mount.
 - A rejected promise from `onDispose`, `onSuspend`, or `onResume` is reported on `errors$` as `HOOK_ERROR`. The resolved value is still not used as a cleanup.
+- A dynamic `inject` that circles back to a factory already waiting on that call is rejected with `CIRCULAR_DEPENDENCY` instead of deadlocking. Joining an in-flight factory from outside it still shares the same promise.
 
 ### Changed
 
