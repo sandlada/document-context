@@ -170,6 +170,37 @@ describe('injection lifecycle', () => {
         expect(calls).toBe(2)
     })
 
+    it('[SCOPE #10] transient 進行中的第二次注入仍呼叫工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        let calls = 0
+        const releases: Array<(value: { id: number }) => void> = []
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    transientToken,
+                    () => new Promise<{ id: number }>((resolve) => {
+                        calls += 1
+                        const id = calls
+                        releases.push(() => resolve({ id }))
+                    }),
+                    { lifecycle: 'transient' },
+                ),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const first = app.inject(transientToken)(session)
+        const second = app.inject(transientToken)(session)
+        const settled = Promise.all([first, second])
+        expect(calls).toBe(2)
+        releases[0]?.({ id: 1 })
+        releases[1]?.({ id: 2 })
+
+        await expect(settled).resolves.toEqual([{ id: 1 }, { id: 2 }])
+        expect((await first)).not.toBe(await second)
+    })
+
     it('[SCOPE #9] transient 的 uses 依賴只建立一次', async () => {
         const { app, adapter } = createTestApplication()
         const outerToken = defineToken<{ dep: { id: number } }>('public')('app:outer')

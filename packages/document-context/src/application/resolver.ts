@@ -391,13 +391,19 @@ async function runFactory(
 ): Promise<unknown> {
     const token = registration.token
     if (session.resolving.has(registration)) {
-        throw new DocumentContextError(
-            'CIRCULAR_DEPENDENCY',
-            `Circular dependency detected for token "${tokenName(token)}".`,
-            { details: { token: tokenName(token) } },
-        )
+        const overlappingFactory =
+            (registration.lifecycle === 'transient' || registration.lifecycle === 'prototype')
+            && !factoryIsAncestor(registration)
+        if (!overlappingFactory) {
+            throw new DocumentContextError(
+                'CIRCULAR_DEPENDENCY',
+                `Circular dependency detected for token "${tokenName(token)}".`,
+                { details: { token: tokenName(token) } },
+            )
+        }
     }
     session.resolving.add(registration)
+    session.resolvingDepth.set(registration, (session.resolvingDepth.get(registration) ?? 0) + 1)
     try {
         const cached = session.usedValues.get(registration)
         const resolved = new Map<TokenLike, unknown>()
@@ -438,7 +444,13 @@ async function runFactory(
         }
         return await run()
     } finally {
-        session.resolving.delete(registration)
+        const depth = (session.resolvingDepth.get(registration) ?? 1) - 1
+        if (depth <= 0) {
+            session.resolvingDepth.delete(registration)
+            session.resolving.delete(registration)
+        } else {
+            session.resolvingDepth.set(registration, depth)
+        }
     }
 }
 

@@ -45,6 +45,13 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
     /** Registrations whose factory is currently running. Used to detect dependency cycles. */
     readonly resolving = new Set<ProviderRegistration>()
     /**
+     * How many factories of a registration are running.
+     *
+     * Transient and prototype factories may overlap. The set above stays occupied until the last
+     * one finishes, so a later call can still tell a cycle from a second injection.
+     */
+    readonly resolvingDepth = new Map<ProviderRegistration, number>()
+    /**
      * Values of `uses` dependencies, created once per registration.
      *
      * Transient factories run again on every injection, but their declared dependencies do not.
