@@ -99,6 +99,8 @@ export interface ApplicationRuntime {
     readonly singletons: Map<ProviderCacheKey, CacheSlot>
     /** The session that registered a singleton token first. */
     readonly singletonOwners: Map<TokenLike, SessionRuntime<any>>
+    /** The registration that won a singleton token. */
+    readonly singletonRegistrations: Map<TokenLike, ProviderRegistration>
     /** Pending injection requests. */
     readonly pending: Set<PendingRequest>
     /** The order in which keyed sessions were suspended. */

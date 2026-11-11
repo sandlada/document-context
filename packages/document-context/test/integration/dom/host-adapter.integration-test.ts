@@ -78,6 +78,18 @@ describe('dom host adapter', () => {
         }
     })
 
+    it('[SCOPE #11] 寫入非法 key 名以 TOKEN_INVALID 拒絕', () => {
+        const adapter = createDomHostAdapter()
+        const host = adapter.hostOf(element())
+        expect(() => adapter.tokens.write(host, 'not-a-valid-key')).toThrowError(DocumentContextError)
+        try {
+            adapter.tokens.write(host, 'not-a-valid-key')
+        } catch (error) {
+            expect((error as DocumentContextError).code).toBe('TOKEN_INVALID')
+        }
+        expect(host.element.getAttribute(KEYED_IDENTITY_ATTRIBUTE)).toBeNull()
+    })
+
     it('[SCOPE #2] 作用域鏈不跨 Document 邊界', () => {
         const adapter = createDomHostAdapter()
         const other = document.implementation.createHTMLDocument('other')

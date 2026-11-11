@@ -9,12 +9,13 @@ import { Observable } from 'rxjs'
 import { DocumentContextError } from '../../domain/model/errors'
 import { isSession, type Host, type LateTarget } from '../../domain/model/session'
 import type { TokenLike } from '../../domain/model/token'
+import { assertResolvableToken } from '../../domain/model/token'
 import type { ApplicationRuntime, InjectDirection, PendingRequest } from '../context'
 import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
-import { resolveMultiGroups, settleInjectValues } from '../multi-resolve'
-import { dispatchRequest, locateMulti } from '../resolver'
+import { resolveMultiGroups, settleInjectGroups } from '../multi-resolve'
+import { dispatchMultiRequest, locateMulti } from '../resolver'
 
 /** Options of a multi-value injection. */
 export interface InjectAllOptions {
@@ -39,6 +40,7 @@ export function beginInjectAll<TTarget = unknown>(
     options: InjectAllOptions | undefined,
     target: LateTarget<TTarget>,
 ): { promise: Promise<unknown[]>; cancel: () => void } {
+    assertResolvableToken(token)
     const wait = options?.wait ?? false
     const direction = options?.direction ?? 'from-bottom-to-top'
     let origin: SessionRuntime<any> | null = null
@@ -98,16 +100,17 @@ export function beginInjectAll<TTarget = unknown>(
     }
     if (location.kind === 'foreign' || !runtime.ports.host.scope.authoritative) {
         // The providers may live in another application or another bundle: ask the event bus.
-        const values = dispatchRequest(runtime, host, token, true)
-        if (values.length > 0) {
+        const groups = dispatchMultiRequest(runtime, host, token)
+        if (groups.length > 0) {
             return {
-                promise: settleInjectValues(values, direction),
+                promise: settleInjectGroups(groups, direction),
                 cancel: () => undefined,
             }
         }
     }
-    if (origin !== null) {
-        // A session target never grows new registrations: an empty result is final.
+    if (origin !== null && !wait) {
+        // A session target never grows new registrations: an empty result is final
+        // unless the caller asked to wait for a provider that may appear later.
         return {
             promise: Promise.resolve([]),
             cancel: () => undefined,

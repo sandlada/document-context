@@ -31,6 +31,26 @@ describe('hook execution', () => {
         expect(order).toEqual(['mount-1', 'mount-2', 'dispose-2', 'dispose-1'])
     })
 
+    it('[LC #8] onDispose 回傳的函式會執行', async () => {
+        const order: string[] = []
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onDispose(() => {
+                order.push('dispose')
+                return () => {
+                    order.push('cleanup')
+                }
+            }),
+        )
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(blueprint)(adapter.createHost())
+        await session.ready
+
+        app.dispose(session)
+
+        expect(order).toEqual(['dispose', 'cleanup'])
+    })
+
     it('[LC #8] 清理函式排在 onDispose 之前且不因暫停執行', async () => {
         const order: string[] = []
         const blueprint = pipe(

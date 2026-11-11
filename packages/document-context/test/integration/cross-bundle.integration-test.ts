@@ -123,4 +123,47 @@ describe('cross bundle', () => {
 
         expect(settled).toBe(false)
     })
+
+    it('[SCOPE #6] 跨 bundle 的 injectAll 只反轉宿主分組', async () => {
+        const pluginToken = defineToken<string>('public')('app:plugin')
+        const nearBundle = createDomHostAdapter()
+        const farBundle = createDomHostAdapter()
+        const consumerBundle = createDomHostAdapter()
+        const nearApp = createApplication({ host: nearBundle })
+        const farApp = createApplication({ host: farBundle })
+        const consumerApp = createApplication({ host: consumerBundle })
+
+        const outer = element('section')
+        const inner = element('div')
+        const leaf = element('span')
+        outer.appendChild(inner)
+        inner.appendChild(leaf)
+
+        const farSession = farApp.mount(
+            pipe(
+                createContext({}),
+                provide(pluginToken, () => 'far-a', { multi: true }),
+                provide(pluginToken, () => 'far-b', { multi: true }),
+            ),
+        )(outer)
+        const nearSession = nearApp.mount(
+            pipe(
+                createContext({}),
+                provide(pluginToken, () => 'near-a', { multi: true }),
+                provide(pluginToken, () => 'near-b', { multi: true }),
+            ),
+        )(inner)
+        await farSession.ready
+        await nearSession.ready
+
+        await expect(consumerApp.injectAll(pluginToken)(leaf)).resolves.toEqual([
+            'near-a',
+            'near-b',
+            'far-a',
+            'far-b',
+        ])
+        await expect(
+            consumerApp.injectAll(pluginToken, { direction: 'from-top-to-bottom' })(leaf),
+        ).resolves.toEqual(['far-a', 'far-b', 'near-a', 'near-b'])
+    })
 })

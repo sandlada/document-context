@@ -13,6 +13,35 @@ import { watchConnectivity } from './disconnect'
 import { runHooksSync } from './hooks'
 
 /**
+ * Keep a keyed session in the suspension table and arm its TTL.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The suspended session.
+ */
+function armSuspensionTimer(runtime: ApplicationRuntime, session: SessionRuntime<any>): void {
+    const token = session.token
+    if (token !== null && !runtime.keyed.has(token)) {
+        runtime.keyed.set(token, session)
+        runtime.suspendedOrder.push(token)
+    }
+    if (token === null || session.pinned) {
+        enforceSuspensionCap(runtime)
+        return
+    }
+    if (session.suspensionTtlMs === 0) {
+        session.dispose('ttl')
+        runtime.notifySessionsChanged()
+        return
+    }
+    const cancel = runtime.ports.host.scheduler.timeout(() => {
+        session.dispose('ttl')
+        runtime.notifySessionsChanged()
+    }, session.suspensionTtlMs)
+    session.setSuspensionTimer(cancel)
+    enforceSuspensionCap(runtime)
+}
+
+/**
  * Suspend a keyed session.
  *
  * @param runtime - The application runtime.
@@ -33,19 +62,7 @@ export function suspendSession(runtime: ApplicationRuntime, session: SessionRunt
         runtime.keyed.set(token, session)
         runtime.suspendedOrder.push(token)
     }
-    if (token !== null && !session.pinned) {
-        if (session.suspensionTtlMs === 0) {
-            session.dispose('ttl')
-            runtime.notifySessionsChanged()
-            return
-        }
-        const cancel = runtime.ports.host.scheduler.timeout(() => {
-            session.dispose('ttl')
-            runtime.notifySessionsChanged()
-        }, session.suspensionTtlMs)
-        session.setSuspensionTimer(cancel)
-    }
-    enforceSuspensionCap(runtime)
+    armSuspensionTimer(runtime, session)
     runtime.notifySessionsChanged()
 }
 
@@ -65,10 +82,15 @@ export function resumeSession(
     host: Host,
 ): void {
     const token = session.token
+    const previous = session.adapterHost
+    if (token !== null) {
+        runtime.ports.host.tokens.remove(previous, token)
+    }
     runtime.unregisterSession(session)
     session.rebind(host)
     runtime.registerSession(session)
     if (token !== null) {
+        runtime.ports.host.tokens.write(host, token)
         runtime.keyed.delete(token)
         const index = runtime.suspendedOrder.indexOf(token)
         if (index >= 0) {
@@ -77,15 +99,33 @@ export function resumeSession(
     }
     session.setSuspensionTimer(() => undefined)
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
+    let pending: Promise<unknown>[]
     try {
-        session.runMountHooksSync()
+        pending = session.runMountHooksSync()
     } catch (error) {
         session.fail(error)
         session.dispose('explicit')
         return
     }
-    runHooksSync(session, 'resume')
-    session.activate(true)
+    const finish = (): void => {
+        if (session.isDisposed) {
+            return
+        }
+        if (!runtime.ports.host.connectivity.isConnected(session.adapterHost)) {
+            armSuspensionTimer(runtime, session)
+            return
+        }
+        runHooksSync(session, 'resume')
+        session.activate(true)
+    }
+    if (pending.length === 0) {
+        finish()
+        return
+    }
+    void Promise.all(pending).then(finish, (error: unknown) => {
+        session.fail(error)
+        session.dispose('explicit')
+    })
 }
 
 /**

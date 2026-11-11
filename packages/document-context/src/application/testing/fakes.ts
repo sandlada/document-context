@@ -14,6 +14,7 @@ import type {
     ProviderDeclaration,
     ScopeTransportPort,
 } from '../../domain/ports/scope-transport'
+import { contextRequestSource } from '../../domain/ports/scope-transport'
 import type { Host, HostEventListener, HostListenerOptions } from '../../domain/model/session'
 import { createApplication, type Application } from '../application'
 import type { ApplicationLimits } from '../context'
@@ -174,12 +175,20 @@ export function createFakeHost(kind: 'element' | 'server' = 'element'): FakeHost
             return parent
         },
         native: () => host,
-        on(type: string, listener: HostEventListener, _options?: HostListenerOptions): () => void {
+        on(type: string, listener: HostEventListener, options?: HostListenerOptions): () => void {
+            if (options?.signal?.aborted === true) {
+                return () => undefined
+            }
             const set = listeners.get(type) ?? new Set<HostEventListener>()
             set.add(listener)
             listeners.set(type, set)
-            return () => {
+            const remove = (): void => {
                 set.delete(listener)
+            }
+            options?.signal?.addEventListener('abort', remove, { once: true })
+            return () => {
+                remove()
+                options?.signal?.removeEventListener('abort', remove)
             }
         },
         setParent(next: Host | null): void {
@@ -205,6 +214,8 @@ export interface FakeHostAdapter extends HostAdapter<Host, FakeHost> {
     createHost(kind?: 'element' | 'server'): FakeHost
     /** Change the connectivity of a host and notify its subscribers. */
     setConnected(host: Host, connected: boolean): void
+    /** Report that a host was adopted into another owner without disconnecting it. */
+    adopt(host: Host, owner: unknown): void
 }
 
 export interface FakeConnectivity extends ConnectivityPort {
@@ -262,7 +273,7 @@ export function createTestApplication(options?: {
 export function createFakeHostAdapter(): FakeHostAdapter {
     const clock = createFakeClock()
     const states = new Map<Host, boolean>()
-    const subscriptions = new Map<Host, Set<(connected: boolean) => void>>()
+    const subscriptions = new Map<Host, Set<(connected: boolean, owner?: unknown) => void>>()
     const declarations = new Map<Host, ProviderDeclaration[]>()
     const handlers = new Map<Host, ((detail: ContextRequestDetail) => void)[]>()
     const providerListeners = new Set<() => void>()
@@ -276,7 +287,7 @@ export function createFakeHostAdapter(): FakeHostAdapter {
         isConnected(host: Host): boolean {
             return states.get(host) ?? true
         },
-        subscribe(host: Host, listener: (connected: boolean) => void): () => void {
+        subscribe(host: Host, listener: (connected: boolean, owner?: unknown) => void): () => void {
             const set = subscriptions.get(host) ?? new Set<(connected: boolean) => void>()
             set.add(listener)
             subscriptions.set(host, set)
@@ -294,6 +305,12 @@ export function createFakeHostAdapter(): FakeHostAdapter {
         states.set(host, connected)
         for (const listener of [...(subscriptions.get(host) ?? [])]) {
             listener(connected)
+        }
+    }
+
+    const adopt = (host: Host, owner: unknown): void => {
+        for (const listener of [...(subscriptions.get(host) ?? [])]) {
+            listener(states.get(host) ?? true, owner)
         }
     }
 
@@ -347,6 +364,8 @@ export function createFakeHostAdapter(): FakeHostAdapter {
             requests += 1
             let current: Host | null = host
             while (current !== null) {
+                ;(detail as ContextRequestDetail & Record<symbol, unknown>)[contextRequestSource] =
+                    current
                 for (const handler of handlers.get(current) ?? []) {
                     handler(detail)
                 }
@@ -413,6 +432,7 @@ export function createFakeHostAdapter(): FakeHostAdapter {
             return host
         },
         setConnected,
+        adopt,
     }
 
     return adapter

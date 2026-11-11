@@ -52,6 +52,24 @@ describe('resume', () => {
         expect(resumed).toEqual(['resume'])
     })
 
+    it('[SCOPE #11] 恢復時把 keyed 身分搬到新宿主', async () => {
+        const { app, adapter } = createTestApplication()
+        const first = adapter.createHost()
+        const session = app.mount(createContext({ count: 0 }), { token: 'app:moved' })(first)
+        await session.ready
+        expect(adapter.tokens.read(first)).toBe('app:moved')
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+
+        const second = adapter.createHost()
+        app.mount(createContext({ count: 0 }), { token: 'app:moved' })(second)
+
+        expect(session.status).toBe('active')
+        expect(adapter.tokens.read(second)).toBe('app:moved')
+        expect(adapter.tokens.read(first)).toBeNull()
+    })
+
     it('[LC #8] 恢復時不重複執行已跑過的 onMount', async () => {
         const order: string[] = []
         const { app, adapter } = createTestApplication()
@@ -99,6 +117,105 @@ describe('resume', () => {
         const second = adapter.createHost()
         app.mount(blueprint, { token: 'app:deferred-mount' })(second)
         expect(order).toEqual(['mount', 'resume'])
+        expect(session.status).toBe('active')
+    })
+
+    it('[LC #2] 補跑的 onMount Promise 落定後才 onResume', async () => {
+        const order: string[] = []
+        let resolveMount: () => void = () => undefined
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveMount = () => {
+                            order.push('mount')
+                            resolve()
+                        }
+                    }),
+            ),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:async-mount' })(first)
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+        expect(session.status).toBe('suspended')
+
+        app.mount(blueprint, { token: 'app:async-mount' })(adapter.createHost())
+        expect(order).toEqual([])
+        expect(session.status).toBe('suspended')
+
+        resolveMount()
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(order).toEqual(['mount', 'resume'])
+        expect(session.status).toBe('active')
+    })
+
+    it('[LC #9] 補跑的 onMount Promise 拒絕時不進入 active', async () => {
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => Promise.reject(new Error('mount failed'))),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:async-mount-fail' })(first)
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+
+        app.mount(blueprint, { token: 'app:async-mount-fail' })(adapter.createHost())
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(session.status).toBe('disposed')
+    })
+
+    it('[LC #2] 補跑 onMount 期間宿主又斷線則不進入 active', async () => {
+        const order: string[] = []
+        let resolveMount: () => void = () => undefined
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveMount = resolve
+                    }),
+            ),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:async-disconnect' })(first)
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+
+        const second = adapter.createHost()
+        app.mount(blueprint, { token: 'app:async-disconnect' })(second)
+        adapter.setConnected(second, false)
+        await adapter.clock.flushMicrotasks()
+        resolveMount()
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(order).toEqual([])
+        expect(session.status).toBe('suspended')
+
+        const third = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:async-disconnect' })(third)
+        expect(resumed).toBe(session)
+        resolveMount()
+        await Promise.resolve()
+        await Promise.resolve()
         expect(session.status).toBe('active')
     })
 

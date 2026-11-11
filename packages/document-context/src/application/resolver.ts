@@ -9,11 +9,12 @@
 import { DocumentContextError } from '../domain/model/errors'
 import type { FactoryTools, ProviderRegistration } from '../domain/model/blueprint'
 import type { ContextRequestDetail } from '../domain/ports/scope-transport'
+import { contextRequestSource } from '../domain/ports/scope-transport'
 import type { Host } from '../domain/model/session'
 import type { TokenLike } from '../domain/model/token'
 import type { ApplicationRuntime } from './context'
 import type { SessionRuntime } from './session'
-import { cacheFor, cacheKey } from './scopes/lifecycle'
+import { cacheFor, cacheKey, isWinningSingleton } from './scopes/lifecycle'
 
 /** A provider group of one host, used by `injectAll`. */
 export interface MultiGroup {
@@ -108,7 +109,10 @@ export function locateSingle(
     if (origin !== null) {
         const own = lastSingleRegistration(origin, token)
         if (own !== undefined) {
-            return { kind: 'local', session: origin, registration: own }
+            const owned = singletonWinner(runtime, origin, own)
+            if (owned.session.status === 'active' || owned.session === origin) {
+                return { kind: 'local', session: owned.session, registration: owned.registration }
+            }
         }
     }
     const scope = runtime.ports.host.scope
@@ -133,9 +137,42 @@ export function locateSingle(
         if (registration === undefined) {
             continue
         }
-        return { kind: 'local', session, registration }
+        const owned = singletonWinner(runtime, session, registration)
+        if (owned.session.status !== 'active' && owned.session !== origin) {
+            continue
+        }
+        return { kind: 'local', session: owned.session, registration: owned.registration }
     }
     return { kind: 'none' }
+}
+
+/**
+ * A singleton is owned by the first session that registered it.
+ *
+ * A later registration is ignored at resolution time, not only reported on `errors$`.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session that holds the registration we found.
+ * @param registration - The registration.
+ * @returns The registration that is allowed to produce the value.
+ */
+function singletonWinner(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): { session: SessionRuntime<any>; registration: ProviderRegistration } {
+    if (registration.lifecycle !== 'singleton') {
+        return { session, registration }
+    }
+    const owner = runtime.singletonOwners.get(registration.token)
+    if (owner === undefined || owner === session) {
+        return { session, registration }
+    }
+    const owned = lastSingleRegistration(owner, registration.token)
+    if (owned === undefined) {
+        return { session, registration }
+    }
+    return { session: owner, registration: owned }
 }
 
 /**
@@ -173,7 +210,10 @@ export function locateMulti(
             continue
         }
         const registrations = session.blueprint.providers.filter(
-            (registration) => registration.token === token && registration.multi,
+            (registration) =>
+                registration.token === token &&
+                registration.multi &&
+                isWinningSingleton(runtime, registration),
         )
         if (registrations.length === 0) {
             continue
@@ -216,6 +256,47 @@ export function dispatchRequest(
     }
     runtime.ports.host.scope.request(from, detail)
     return values
+}
+
+/**
+ * Dispatch a multi-value `context-request`, keeping each host's callbacks together.
+ *
+ * Reversing the result reverses host groups only. Values from one host stay in registration order.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the request originates from.
+ * @param token - The token to request.
+ * @returns The values grouped by host, nearest group first.
+ */
+export function dispatchMultiRequest(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+): unknown[][] {
+    if (typeof token !== 'string') {
+        return []
+    }
+    const groups: unknown[][] = []
+    let currentSource: unknown
+    let currentGroup: unknown[] | undefined
+    const detail: ContextRequestDetail = {
+        context: token,
+        multi: true,
+        callback: (value: unknown) => {
+            const source = (detail as ContextRequestDetail & Record<symbol, unknown>)[
+                contextRequestSource
+            ]
+            if (currentGroup === undefined || source === undefined || source !== currentSource) {
+                currentGroup = [value]
+                groups.push(currentGroup)
+                currentSource = source
+            } else {
+                currentGroup.push(value)
+            }
+        },
+    }
+    runtime.ports.host.scope.request(from, detail)
+    return groups
 }
 
 /**
@@ -262,18 +343,28 @@ async function runFactory(
     registration: ProviderRegistration,
 ): Promise<unknown> {
     const token = registration.token
-    if (session.resolving.has(token)) {
+    if (session.resolving.has(registration)) {
         throw new DocumentContextError(
             'CIRCULAR_DEPENDENCY',
             `Circular dependency detected for token "${tokenName(token)}".`,
             { details: { token: tokenName(token) } },
         )
     }
-    session.resolving.add(token)
+    session.resolving.add(registration)
     try {
+        const cached = session.usedValues.get(registration)
         const resolved = new Map<TokenLike, unknown>()
-        for (const used of registration.uses) {
-            resolved.set(used, await resolveUsedValue(runtime, session, used))
+        if (cached === undefined) {
+            for (const used of registration.uses) {
+                resolved.set(used, await resolveUsedValue(runtime, session, used))
+            }
+            if (registration.uses.length > 0) {
+                session.usedValues.set(registration, resolved)
+            }
+        } else {
+            for (const [used, value] of cached) {
+                resolved.set(used, value)
+            }
         }
         const tools: FactoryTools = {
             session,
@@ -290,7 +381,7 @@ async function runFactory(
         }
         return await registration.factory(tools)
     } finally {
-        session.resolving.delete(token)
+        session.resolving.delete(registration)
     }
 }
 
@@ -441,7 +532,10 @@ export function createRequestHandler(
         const token = detail.context as TokenLike
         if (detail.multi === true) {
             const registrations = session.blueprint.providers.filter(
-                (registration) => registration.token === token && registration.multi,
+                (registration) =>
+                    registration.token === token &&
+                    registration.multi &&
+                    isWinningSingleton(runtime, registration),
             )
             for (const registration of registrations) {
                 detail.callback(resolveProviderValue(runtime, session, registration))
@@ -455,7 +549,7 @@ export function createRequestHandler(
         if (registration === undefined) {
             return
         }
-        detail.resolved = true
         detail.callback(resolveProviderValue(runtime, session, registration))
+        detail.resolved = true
     }
 }

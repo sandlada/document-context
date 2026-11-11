@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
 import { defineToken } from '../../domain/model/token'
+import { DocumentContextError } from '../../domain/model/errors'
 import { provide } from './provide'
 import { createTestApplication } from '../testing/fakes'
 
@@ -8,6 +9,29 @@ const themeToken = defineToken<string>('public')('app:theme')
 const missingToken = defineToken<string>('public')('app:missing')
 
 describe('inject', () => {
+    it('[API #13] 非法公開名的 inject 拋 TOKEN_INVALID', () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        expect(() => app.inject('no-namespace')(host)).toThrowError(DocumentContextError)
+        try {
+            app.inject('no-namespace')(host)
+        } catch (error) {
+            expect((error as DocumentContextError).code).toBe('TOKEN_INVALID')
+        }
+    })
+
+    it('[API #10] inject 不接受 timeoutMs 或 signal', () => {
+        const { app } = createTestApplication()
+        app.inject(themeToken, {
+            // @ts-expect-error API #10：inject 沒有 timeoutMs
+            timeoutMs: 1,
+        })
+        app.inject(themeToken, {
+            // @ts-expect-error API #10：inject 沒有 signal
+            signal: new AbortController().signal,
+        })
+    })
+
     it('[SCOPE #1] 單值注入近者勝', async () => {
         const { app, adapter } = createTestApplication()
         const outer = adapter.createHost()
@@ -62,6 +86,18 @@ describe('inject', () => {
         app.dispose(session)
 
         await expect(waiting).rejects.toMatchObject({ code: 'DISPOSED_SESSION' })
+    })
+
+    it('[RX #7] 釋放 Application 時未決的元素注入以 DISPOSED_SESSION 結束', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const pending = app.inject(themeToken)(host)
+
+        app.release()
+        app.release()
+
+        await expect(pending).rejects.toMatchObject({ code: 'DISPOSED_SESSION' })
+        expect(() => app.mount(createContext({}))(host)).toThrowError(DocumentContextError)
     })
 
     it('[SCOPE #12] 元素目標在提供者出現前保持 pending', async () => {

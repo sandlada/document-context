@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createContext } from '../../domain/model/blueprint'
+import { createContext, pipe } from '../../domain/model/blueprint'
+import { onAdopt } from '../api/hooks'
 import { createTestApplication } from '../testing/fakes'
 
 interface CounterState {
@@ -64,5 +65,33 @@ describe('disconnect', () => {
         await adapter.clock.flushMicrotasks()
 
         expect(session.status).toBe('active')
+    })
+
+    it('[LC #8] 暫停期間 adopt 不執行 onAdopt', async () => {
+        const events: string[] = []
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onAdopt(() => {
+                    events.push('adopt')
+                }),
+            ),
+            { token: 'app:paused-adopt' },
+        )(host)
+        await session.ready
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('suspended')
+
+        adapter.adopt(host, { name: 'other' })
+
+        const seen: string[] = []
+        session.lifecycle$.subscribe((event) => seen.push(event.type))
+
+        expect(events).toEqual([])
+        expect(seen).toEqual(['suspended'])
     })
 })

@@ -11,8 +11,9 @@ import type { Host } from '../domain/model/session'
 import type { TokenLike } from '../domain/model/token'
 import type { ApplicationRuntime, InjectDirection, PendingRequest } from './context'
 import type { SessionRuntime } from './session'
-import { resolveMultiGroups, settleInjectValues } from './multi-resolve'
+import { resolveMultiGroups, settleInjectGroups } from './multi-resolve'
 import {
+    dispatchMultiRequest,
     dispatchRequest,
     locateMulti,
     locateSingle,
@@ -189,9 +190,9 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
             return
         }
         if (location.kind === 'foreign' || !runtime.ports.host.scope.authoritative) {
-            const values = dispatchRequest(runtime, request.host, request.token, true)
-            if (values.length > 0) {
-                void settleInjectValues(values, request.direction).then(
+            const groups = dispatchMultiRequest(runtime, request.host, request.token)
+            if (groups.length > 0) {
+                void settleInjectGroups(groups, request.direction).then(
                     (settled) => request.resolve(settled),
                     (error: unknown) => request.reject(toError(error)),
                 )

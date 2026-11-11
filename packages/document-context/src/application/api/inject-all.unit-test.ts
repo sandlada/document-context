@@ -67,6 +67,34 @@ describe('injectAll', () => {
         await expect(app.injectAll(pluginToken)(session)).resolves.toEqual([])
     })
 
+    it('[SCOPE #12] Session 目標 injectAll 帶 wait 時保持 pending', async () => {
+        const { app, adapter } = createTestApplication()
+        const outer = adapter.createHost()
+        const inner = adapter.createHost()
+        inner.setParent(outer)
+        const session = app.mount(createContext({}))(inner)
+        await session.ready
+
+        let settled = false
+        const pending = app.injectAll(pluginToken, { wait: true })(session).then((values) => {
+            settled = true
+            return values
+        })
+        pending.catch(() => {
+            settled = true
+        })
+        await Promise.resolve()
+        expect(settled).toBe(false)
+
+        const provider = app.mount(
+            pipe(createContext({}), provide(pluginToken, () => 'outer', { multi: true })),
+        )(outer)
+        await provider.ready
+        await adapter.clock.flushMicrotasks()
+
+        await expect(pending).resolves.toEqual(['outer'])
+    })
+
     it('[RX #6] inject$ 為冷流且 resolve-once', async () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()

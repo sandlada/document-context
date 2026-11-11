@@ -147,6 +147,41 @@ describe('context protocol', () => {
         expect(events).toEqual([{ context: 'app:mounted' }])
     })
 
+    it('[LC #11] 恢復時重新派發 context-mount', async () => {
+        const adapter = createDomHostAdapter()
+        const app = createApplication({ host: adapter })
+        const first = element('section')
+        const session = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+            { token: 'app:theme-host' },
+        )(first)
+        await session.ready
+
+        first.remove()
+        await flush()
+        expect(session.status).toBe('suspended')
+
+        const second = element('section')
+        const leaf = element('span')
+        second.appendChild(leaf)
+
+        const mounts: unknown[] = []
+        second.addEventListener(CONTEXT_MOUNT_EVENT, (event) => {
+            mounts.push((event as CustomEvent<{ context: string | null }>).detail)
+        })
+
+        const pending = app.inject(themeToken)(leaf)
+        const resumed = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'other')),
+            { token: 'app:theme-host' },
+        )(second)
+
+        expect(resumed).toBe(session)
+        expect(session.status).toBe('active')
+        expect(mounts).toEqual([{ context: 'app:theme-host' }])
+        await expect(pending).resolves.toBe('dark')
+    })
+
     it('[LC #11] 銷毀時派發 context-dispose', async () => {
         const adapter = createDomHostAdapter()
         const app = createApplication({ host: adapter })

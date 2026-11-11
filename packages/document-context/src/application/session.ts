@@ -42,8 +42,14 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
     readonly abortController = new AbortController()
     /** `scoped` dependency cache. */
     readonly scopedCache = new Map<ProviderCacheKey, CacheSlot>()
-    /** Tokens whose factory is currently running. Used to detect dependency cycles. */
-    readonly resolving = new Set<TokenLike>()
+    /** Registrations whose factory is currently running. Used to detect dependency cycles. */
+    readonly resolving = new Set<ProviderRegistration>()
+    /**
+     * Values of `uses` dependencies, created once per registration.
+     *
+     * Transient factories run again on every injection, but their declared dependencies do not.
+     */
+    readonly usedValues = new Map<ProviderRegistration, ReadonlyMap<TokenLike, unknown>>()
     /** Cleanup callbacks returned by `onMount` hooks. */
     readonly cleanups: (() => void)[] = []
     /** Promises returned by disposal hooks. */
@@ -222,12 +228,16 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
      *
      * Used on the resuscitation path when initialization skipped `onMount`. Failures propagate to
      * the caller so the session can be disposed without entering `active`.
+     *
+     * @returns Promises returned by the hooks. They are not cleanups. The caller decides when the
+     * resume may continue.
      */
-    runMountHooksSync(): void {
+    runMountHooksSync(): Promise<unknown>[] {
         if (this.mountHooksRan) {
-            return
+            return []
         }
         this.mountHooksRan = true
+        const pending: Promise<unknown>[] = []
         for (const hook of this.blueprint.hooks) {
             if (hook.type !== 'mount') {
                 continue
@@ -236,9 +246,10 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
             if (typeof result === 'function') {
                 this.cleanups.push(result)
             } else if (result instanceof Promise) {
-                this.pendingCleanups.push(result.catch(() => undefined))
+                pending.push(result)
             }
         }
+        return pending
     }
 
     /** Whether the `onMount` hooks already ran. */
@@ -270,6 +281,9 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
      * @returns A promise that settles when every hook settled.
      */
     async runAdoptHooks(): Promise<void> {
+        if (this.currentStatus !== 'active') {
+            return
+        }
         this.lifecycleStream.transition({ type: 'active' }, { type: 'adopted' })
         await runHooks(this, 'adopt')
     }
@@ -467,9 +481,10 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
         releaseSingletons(this.runtime, this)
         if (this.tokenName !== null) {
             this.runtime.keyed.delete(this.tokenName)
-            const index = this.runtime.suspendedOrder.indexOf(this.tokenName)
-            if (index >= 0) {
-                this.runtime.suspendedOrder.splice(index, 1)
+            for (let index = this.runtime.suspendedOrder.length - 1; index >= 0; index -= 1) {
+                if (this.runtime.suspendedOrder[index] === this.tokenName) {
+                    this.runtime.suspendedOrder.splice(index, 1)
+                }
             }
             this.runtime.ports.host.tokens.remove(this.rawHost, this.tokenName)
         }

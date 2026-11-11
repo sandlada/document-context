@@ -9,6 +9,7 @@ import { Observable } from 'rxjs'
 import { DocumentContextError } from '../../domain/model/errors'
 import { isSession, type Host, type LateTarget } from '../../domain/model/session'
 import type { TokenLike } from '../../domain/model/token'
+import { assertResolvableToken } from '../../domain/model/token'
 import type { ApplicationRuntime, PendingRequest } from '../context'
 import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
@@ -49,6 +50,7 @@ export function beginInjection<TTarget = unknown>(
     options: InjectOptions | undefined,
     target: LateTarget<TTarget>,
 ): CancellableInjection {
+    assertResolvableToken(token)
     const wait = options?.wait ?? false
     let origin: SessionRuntime<any> | null = null
     let host: Host

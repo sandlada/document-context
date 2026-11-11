@@ -4,6 +4,7 @@ import { defineToken } from '../../../src/domain/model/token'
 import { createApplication } from '../../../src/application/application'
 import { provide } from '../../../src/application/api/provide'
 import { createDomHostAdapter } from '../../../src/infrastructure/dom/host-adapter'
+import { CONTEXT_MOUNT_EVENT } from '../../../src/infrastructure/dom/context-protocol'
 
 const themeToken = defineToken<string>('public')('app:theme')
 const pluginToken = defineToken<string>('public')('app:plugin')
@@ -116,5 +117,21 @@ describe('dom scope transport', () => {
 
         expect(settled).toBe(false)
         app.release()
+    })
+
+    it('[PORT #8] 釋放 adapter 後 context-mount 不再喚醒已釋放的監聽', () => {
+        const adapter = createDomHostAdapter()
+        let calls = 0
+        adapter.scope.onProviderChange(() => {
+            calls += 1
+        })
+
+        document.dispatchEvent(new CustomEvent(CONTEXT_MOUNT_EVENT, { bubbles: true }))
+        expect(calls).toBe(1)
+
+        adapter.release()
+        document.dispatchEvent(new CustomEvent(CONTEXT_MOUNT_EVENT, { bubbles: true }))
+        expect(calls).toBe(1)
+        adapter.release()
     })
 })

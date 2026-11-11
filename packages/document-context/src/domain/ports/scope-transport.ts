@@ -56,6 +56,9 @@ export interface ContextRequestDetail {
     resolved?: boolean
 }
 
+/** Groups multi callbacks that come from the same host during one `context-request`. */
+export const contextRequestSource = Symbol('document-context.request-source')
+
 /** The kinds of Context Protocol announcements a transport can broadcast. */
 export type ContextAnnouncement = 'mount' | 'dispose'
 

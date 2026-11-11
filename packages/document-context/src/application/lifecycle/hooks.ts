@@ -65,7 +65,8 @@ export function runHooksSync(session: SessionRuntime<any>, type: HookType): void
  * Run every `onDispose` hook in LIFO order.
  *
  * Promises returned by the hooks are collected on the session instead of being awaited, so that
- * `dispose` stays synchronous.
+ * `dispose` stays synchronous. A function return runs immediately as a cleanup. A promise's resolved
+ * value is not a cleanup.
  *
  * @param session - The session.
  */
@@ -74,7 +75,17 @@ export function runDisposeHooks(session: SessionRuntime<any>): void {
     for (const hook of [...hooks].reverse()) {
         try {
             const result = hook.hook(session)
-            if (result instanceof Promise) {
+            if (typeof result === 'function') {
+                try {
+                    result()
+                } catch (error) {
+                    session.reportError(
+                        new DocumentContextError('HOOK_ERROR', 'Dispose cleanup failed.', {
+                            details: { cause: error },
+                        }),
+                    )
+                }
+            } else if (result instanceof Promise) {
                 session.pendingCleanups.push(result.catch(() => undefined))
             }
         } catch (error) {

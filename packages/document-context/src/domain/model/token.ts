@@ -120,6 +120,21 @@ export function isPrivateToken(value: unknown): value is PrivateToken<unknown> {
 }
 
 /**
+ * Reject a public token whose name is not `namespace:name`.
+ *
+ * Private tokens skip the rule. Their identity is the object reference.
+ *
+ * @param token - The token to check.
+ * @throws A `DocumentContextError` with code `TOKEN_INVALID` when a public token name is illegal.
+ */
+export function assertResolvableToken(token: TokenLike): void {
+    if (isPrivateToken(token)) {
+        return
+    }
+    validateTokenName(typeof token === 'string' ? token : '')
+}
+
+/**
  * Define a token.
  *
  * Visibility comes first, the name comes last. Omitting the visibility yields a public token.

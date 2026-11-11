@@ -20,6 +20,12 @@ describe('update', () => {
         expect(app.read((state: CounterState) => state.count)(session)).toBe(11)
     })
 
+    it('[API #5] updater 回傳型別不含 Promise', () => {
+        // @ts-expect-error API #5：updater 必須同步，回傳型別不含 Promise
+        const rejected: (state: CounterState) => CounterState = (state) => Promise.resolve(state)
+        expect(typeof rejected).toBe('function')
+    })
+
     it('[API #3] update 整份替換並刪除未寫回的鍵', async () => {
         const { app, adapter } = createTestApplication()
         const session = app.mount(

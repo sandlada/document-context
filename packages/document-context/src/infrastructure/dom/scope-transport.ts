@@ -23,6 +23,8 @@ import type { DomHost } from './host-adapter'
 export interface DomScopeTransport extends ScopeTransportPort {
     /** The provider declarations per element. */
     readonly declarations: Map<Element, ProviderDeclaration[]>
+    /** Remove the document listener that wakes pending injections. */
+    release(): void
 }
 
 /**
@@ -127,6 +129,10 @@ export function createDomScopeTransport(options: {
             return () => {
                 providerListeners.delete(listener)
             }
+        },
+        release(): void {
+            options.document.removeEventListener(CONTEXT_MOUNT_EVENT, onMount)
+            providerListeners.clear()
         },
     }
 }

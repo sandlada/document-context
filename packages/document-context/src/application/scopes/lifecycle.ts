@@ -6,7 +6,7 @@
  * injection).
  */
 
-import type { ProviderLifecycle } from '../../domain/model/blueprint'
+import type { ProviderLifecycle, ProviderRegistration } from '../../domain/model/blueprint'
 import type { TokenLike } from '../../domain/model/token'
 import type { ApplicationRuntime, CacheSlot, ProviderCacheKey } from '../context'
 import type { SessionRuntime } from '../session'
@@ -54,13 +54,33 @@ export function cacheFor(
 export function claimSingleton(
     runtime: ApplicationRuntime,
     session: SessionRuntime<any>,
-    token: TokenLike,
+    registration: ProviderRegistration,
 ): boolean {
+    const token = registration.token
     if (runtime.singletonOwners.has(token)) {
         return false
     }
     runtime.singletonOwners.set(token, session)
+    runtime.singletonRegistrations.set(token, registration)
     return true
+}
+
+/**
+ * Whether a singleton registration is the one allowed to produce the value.
+ *
+ * @param runtime - The application runtime.
+ * @param registration - The registration to test.
+ * @returns `false` when an earlier singleton registration owns the token.
+ */
+export function isWinningSingleton(
+    runtime: ApplicationRuntime,
+    registration: ProviderRegistration,
+): boolean {
+    if (registration.lifecycle !== 'singleton') {
+        return true
+    }
+    const winner = runtime.singletonRegistrations.get(registration.token)
+    return winner === undefined || winner === registration
 }
 
 /**
@@ -74,8 +94,16 @@ export function releaseSingletons(
     session: SessionRuntime<any>,
 ): void {
     for (const [token, owner] of runtime.singletonOwners) {
-        if (owner === session) {
-            runtime.singletonOwners.delete(token)
+        if (owner !== session) {
+            continue
+        }
+        runtime.singletonOwners.delete(token)
+        runtime.singletonRegistrations.delete(token)
+        runtime.singletons.delete(token)
+    }
+    for (const registration of session.blueprint.providers) {
+        if (registration.lifecycle === 'singleton') {
+            runtime.singletons.delete(registration)
         }
     }
 }

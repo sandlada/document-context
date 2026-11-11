@@ -31,14 +31,16 @@ export async function resolveMultiGroups(
 /**
  * Settle cross-application multi-value results and apply scope direction.
  *
- * @param values - The raw values from the scope transport.
+ * Host groups reverse. Values inside one host stay in the order the provider emitted them.
+ *
+ * @param groups - The values grouped by host, nearest group first.
  * @param direction - The order along the scope chain.
  * @returns The settled values in the requested order.
  */
-export async function settleInjectValues(
-    values: unknown[],
+export async function settleInjectGroups(
+    groups: readonly (readonly unknown[])[],
     direction: InjectDirection,
 ): Promise<unknown[]> {
-    const settled = await Promise.all(values)
-    return direction === 'from-top-to-bottom' ? settled.reverse() : settled
+    const ordered = direction === 'from-top-to-bottom' ? [...groups].reverse() : groups
+    return Promise.all(ordered.flat())
 }

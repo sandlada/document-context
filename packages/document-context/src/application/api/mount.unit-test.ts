@@ -205,6 +205,53 @@ describe('mount', () => {
         } catch (error) {
             expect((error as DocumentContextError).code).toBe('KEYED_CONFLICT')
         }
+        expect(first.status).toBe('active')
+    })
+
+    it('[API #17] 跨宿主衝突在銷毀同宿主會話之前拒絕', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const local = app.mount(createContext({ count: 1 }), { token: 'app:local' })(host)
+        const shared = app.mount(createContext({ count: 2 }), { token: 'app:shared' })(
+            adapter.createHost(),
+        )
+        await local.ready
+        await shared.ready
+
+        expect(() =>
+            app.mount(createContext({ count: 0 }), {
+                token: 'app:shared',
+                onConflict: 'replace',
+            })(host),
+        ).toThrowError(DocumentContextError)
+
+        expect(local.status).toBe('active')
+        expect(shared.status).toBe('active')
+        expect(app.read((state: { count: number }) => state.count)(local)).toBe(1)
+    })
+
+    it('[API #17] replace 復甦暫停中的 token 時不留下舊會話', async () => {
+        const { app, adapter } = createTestApplication()
+        const parked = adapter.createHost()
+        const shared = app.mount(createContext({ count: 4 }), { token: 'app:shared' })(parked)
+        await shared.ready
+        adapter.setConnected(parked, false)
+        await adapter.clock.flushMicrotasks()
+        expect(shared.status).toBe('suspended')
+
+        const host = adapter.createHost()
+        const local = app.mount(createContext({ count: 1 }), { token: 'app:local' })(host)
+        await local.ready
+
+        const resumed = app.mount(createContext({ count: 0 }), {
+            token: 'app:shared',
+            onConflict: 'replace',
+        })(host)
+
+        expect(local.status).toBe('disposed')
+        expect(resumed).toBe(shared)
+        expect(resumed.status).toBe('active')
+        expect(app.read((state: { count: number }) => state.count)(resumed)).toBe(4)
     })
 
     it('[LC #1] keyed 會話的 token 會被寫回宿主', async () => {

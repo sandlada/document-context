@@ -5,7 +5,7 @@
  * and listens to the same events can resolve dependencies with this library.
  */
 
-import type { ContextRequestDetail } from '../../domain/ports/scope-transport'
+import { contextRequestSource, type ContextRequestDetail } from '../../domain/ports/scope-transport'
 
 /** The event a consumer dispatches when it needs a provider. */
 export const CONTEXT_REQUEST_EVENT = 'context-request'
@@ -53,6 +53,8 @@ export function listenContextRequest(
         if (detail === undefined || detail === null) {
             return
         }
+        ;(detail as ContextRequestDetail & Record<symbol, unknown>)[contextRequestSource] =
+            event.currentTarget
         handler(detail)
     }
     element.addEventListener(CONTEXT_REQUEST_EVENT, listener)

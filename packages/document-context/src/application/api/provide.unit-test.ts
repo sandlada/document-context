@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
-import { defineToken } from '../../domain/model/token'
+import { defineToken, type Token } from '../../domain/model/token'
+import { DocumentContextError } from '../../domain/model/errors'
 import { provide } from './provide'
 import { createTestApplication } from '../testing/fakes'
 
@@ -102,6 +103,34 @@ describe('provide', () => {
         await expect(session.ready).rejects.toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
         expect(firstCalls).toBe(0)
         expect(session.status).toBe('disposed')
+    })
+
+    it('[SCOPE #8] 工廠同步 inject 自己以 CIRCULAR_DEPENDENCY 拒絕', async () => {
+        const self = defineToken<string>('public')('app:self')
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({}),
+            provide(self, ({ session }) => app.inject(self)(session), { eager: true }),
+        )
+        const session = app.mount(blueprint)(adapter.createHost())
+
+        await expect(session.ready).rejects.toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
+        expect(session.status).toBe('disposed')
+    })
+
+    it('[API #13] 非法公開名的 provide 拋 TOKEN_INVALID', () => {
+        const illegal = 'no-namespace' as Token<number>
+        expect(() => provide(illegal, () => 1)).toThrowError(DocumentContextError)
+        try {
+            provide(illegal, () => 1)
+        } catch (error) {
+            expect((error as DocumentContextError).code).toBe('TOKEN_INVALID')
+        }
+    })
+
+    it('[API #13] 私有 token 不走公開名稱驗證', () => {
+        const secret = defineToken<number>('private')('not a public name')
+        expect(() => provide(secret, () => 1)).not.toThrow()
     })
 
     it('[API #1] provide 是 data-last 的藍圖運算子', () => {

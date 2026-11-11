@@ -7,7 +7,8 @@
  */
 
 import type { Observable, Subscription } from 'rxjs'
-import type { Blueprint } from '../domain/model/blueprint'
+import { DocumentContextError } from '../domain/model/errors'
+import type { Blueprint, ProviderRegistration } from '../domain/model/blueprint'
 import type { Host, LateTarget, MountTarget, Session } from '../domain/model/session'
 import type { RegisteredService, TokenLike } from '../domain/model/token'
 import type { ApplicationLimits, ApplicationPorts, CacheSlot, PendingRequest, ProviderCacheKey } from './context'
@@ -249,6 +250,7 @@ class ApplicationImpl<THost extends Host, TTarget> implements Application<THost,
     readonly keyed = new Map<string, SessionRuntime<any>>()
     readonly singletons = new Map<ProviderCacheKey, CacheSlot>()
     readonly singletonOwners = new Map<TokenLike, SessionRuntime<any>>()
+    readonly singletonRegistrations = new Map<TokenLike, ProviderRegistration>()
     readonly pending = new Set<PendingRequest>()
     readonly suspendedOrder: string[] = []
     released = false
@@ -390,6 +392,10 @@ class ApplicationImpl<THost extends Host, TTarget> implements Application<THost,
             const unsubscribe = connectivity.subscribe(owned.adapterHost, (connected, adoptedDoc) => {
                 if (adoptedDoc !== undefined) {
                     config.onAdopt?.(adoptedDoc)
+                    if (!connected) {
+                        config.onDisconnect?.()
+                    }
+                    return
                 }
                 if (connected) {
                     config.onConnect?.()
@@ -415,12 +421,18 @@ class ApplicationImpl<THost extends Host, TTarget> implements Application<THost,
             session.dispose('explicit')
         }
         for (const request of [...this.pending]) {
-            request.release()
+            request.reject(
+                new DocumentContextError(
+                    'DISPOSED_SESSION',
+                    'The application was released before the injection could finish.',
+                ),
+            )
         }
         this.sessions.clear()
         this.keyed.clear()
         this.singletons.clear()
         this.singletonOwners.clear()
+        this.singletonRegistrations.clear()
         this.pending.clear()
         this.suspendedOrder.length = 0
         this.sessionListeners.clear()

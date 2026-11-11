@@ -52,6 +52,82 @@ describe('injection lifecycle', () => {
         expect(calls).toBe(1)
     })
 
+    it('[SCOPE #9] 後註冊的 singleton 在解析時不執行工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        const calls: string[] = []
+        const first = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    singletonToken,
+                    () => {
+                        calls.push('first')
+                        return { id: 1 }
+                    },
+                    { lifecycle: 'singleton' },
+                ),
+            ),
+        )(adapter.createHost())
+        await first.ready
+        const second = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    singletonToken,
+                    () => {
+                        calls.push('second')
+                        return { id: 2 }
+                    },
+                    { lifecycle: 'singleton' },
+                ),
+            ),
+        )(adapter.createHost())
+        await second.ready
+
+        await expect(app.inject(singletonToken)(second)).resolves.toEqual({ id: 1 })
+        expect(calls).toEqual(['first'])
+    })
+
+    it('[SCOPE #9] 擁有者銷毀後 singleton 槽不再交出舊實例', async () => {
+        const { app, adapter } = createTestApplication()
+        const calls: string[] = []
+        const first = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    singletonToken,
+                    () => {
+                        calls.push('first')
+                        return { id: 1 }
+                    },
+                    { lifecycle: 'singleton' },
+                ),
+            ),
+        )(adapter.createHost())
+        await first.ready
+        const second = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    singletonToken,
+                    () => {
+                        calls.push('second')
+                        return { id: 2 }
+                    },
+                    { lifecycle: 'singleton' },
+                ),
+            ),
+        )(adapter.createHost())
+        await second.ready
+        const owned = await app.inject(singletonToken)(second)
+        expect(owned).toEqual({ id: 1 })
+
+        app.dispose(first)
+
+        await expect(app.inject(singletonToken)(second)).resolves.toEqual({ id: 2 })
+        expect(calls).toEqual(['first', 'second'])
+    })
+
     it('[SCOPE #9] 重複 singleton 的 errors$ 收到 SINGLETON_CONFLICT', async () => {
         const { app, adapter } = createTestApplication()
         const blueprint = pipe(
@@ -92,6 +168,115 @@ describe('injection lifecycle', () => {
 
         expect(first).not.toBe(second)
         expect(calls).toBe(2)
+    })
+
+    it('[SCOPE #9] transient 的 uses 依賴只建立一次', async () => {
+        const { app, adapter } = createTestApplication()
+        const outerToken = defineToken<{ dep: { id: number } }>('public')('app:outer')
+        let depCalls = 0
+        let outerCalls = 0
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    transientToken,
+                    () => {
+                        depCalls += 1
+                        return { id: depCalls }
+                    },
+                    { lifecycle: 'transient' },
+                ),
+                provide(
+                    outerToken,
+                    ({ use }) => {
+                        outerCalls += 1
+                        return { dep: use(transientToken) }
+                    },
+                    { lifecycle: 'transient', uses: [transientToken] },
+                ),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const first = await app.inject(outerToken)(session)
+        const second = await app.inject(outerToken)(session)
+        await app.inject(transientToken)(session)
+
+        expect(outerCalls).toBe(2)
+        expect(first.dep).toBe(second.dep)
+        expect(depCalls).toBe(2)
+    })
+
+    it('[SCOPE #9] 後註冊的 multi singleton 不進入 injectAll', async () => {
+        const { app, adapter } = createTestApplication()
+        const plugin = defineToken<string>('public')('app:plugin-singleton')
+        let calls = 0
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    plugin,
+                    () => {
+                        calls += 1
+                        return 'first'
+                    },
+                    { lifecycle: 'singleton', multi: true },
+                ),
+                provide(
+                    plugin,
+                    () => {
+                        calls += 1
+                        return 'second'
+                    },
+                    { lifecycle: 'singleton', multi: true },
+                ),
+            ),
+        )(adapter.createHost())
+        const codes: string[] = []
+        session.errors$.subscribe((error) => codes.push(error.code))
+        await session.ready
+
+        await expect(app.injectAll(plugin)(session)).resolves.toEqual(['first'])
+        expect(calls).toBe(1)
+        expect(codes).toContain('SINGLETON_CONFLICT')
+    })
+
+    it('[SCOPE #9] 暫停中的 singleton 擁有者不回答注入', async () => {
+        const { app, adapter } = createTestApplication()
+        const ownerHost = adapter.createHost()
+        const owner = app.mount(
+            pipe(
+                createContext({}),
+                provide(singletonToken, () => ({ id: 1 }), { lifecycle: 'singleton' }),
+            ),
+            { token: 'app:singleton-owner' },
+        )(ownerHost)
+        await owner.ready
+        adapter.setConnected(ownerHost, false)
+        await adapter.clock.flushMicrotasks()
+        expect(owner.status).toBe('suspended')
+
+        const second = app.mount(
+            pipe(
+                createContext({}),
+                provide(singletonToken, () => ({ id: 2 }), { lifecycle: 'singleton' }),
+            ),
+        )(adapter.createHost())
+        await second.ready
+
+        await expect(app.inject(singletonToken)(second)).rejects.toMatchObject({
+            code: 'UNKNOWN_SERVICE',
+        })
+
+        const resumed = app.mount(
+            pipe(
+                createContext({}),
+                provide(singletonToken, () => ({ id: 3 }), { lifecycle: 'singleton' }),
+            ),
+            { token: 'app:singleton-owner' },
+        )(adapter.createHost())
+        expect(resumed).toBe(owner)
+        await expect(app.inject(singletonToken)(second)).resolves.toEqual({ id: 1 })
     })
 
     it('[SCOPE #9] prototype 與 transient 行為相同', async () => {

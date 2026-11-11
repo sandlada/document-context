@@ -6,6 +6,7 @@
  */
 
 import { DocumentContextError } from '../../domain/model/errors'
+import { validateTokenName } from '../../domain/model/token'
 import type { Host, HostEventListener, HostListenerOptions } from '../../domain/model/session'
 import type { ConnectivityPort, HostAdapter, TokensPort } from '../../domain/ports/host'
 import type { SchedulerPort } from '../../domain/ports/scheduler'
@@ -111,6 +112,7 @@ export function createDomHostAdapter(options?: {
             return host.element.getAttribute(KEYED_IDENTITY_ATTRIBUTE)
         },
         write(host: Host, token: string): void {
+            validateTokenName(token)
             if (!isDomHost(host)) {
                 return
             }
@@ -144,6 +146,7 @@ export function createDomHostAdapter(options?: {
         },
         release(): void {
             observer.release()
+            scope.release()
         },
     }
 }

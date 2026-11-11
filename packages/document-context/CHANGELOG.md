@@ -17,6 +17,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Resuming a keyed session rebinds connectivity watching to the new host so later disconnects suspend correctly.
 - `onSuspend` is not invoked when a session moves from `starting` straight to `suspended` during initialization.
 - Pending injections that wait on a `Session` target are rejected with `DISPOSED_SESSION` when that session is disposed.
+- Resuming a keyed session moves its identity onto the new host and removes it from the previous host.
+- `injectAll` on a session target with `{ wait: true }` stays pending until a multi provider appears, instead of fulfilling with `[]`.
+- A later singleton registration no longer wins at resolution time: injection uses the first registrant's factory.
+- Cross-bundle `injectAll` reverses host groups only, so registrations on one host keep their blueprint order.
+- Public `provide` / `inject` / `injectAll` and keyed-identity writes reject names that are not `namespace:name` with `TOKEN_INVALID`. Private tokens skip that check.
+- A cross-host keyed conflict is rejected before `onConflict: 'replace'` disposes the session already on the target host. Replacing a host with a suspended token resumes that session instead of leaving the previous one mounted.
+- `merge` deep-copies untouched nested plain objects, so mutating the result does not change the base.
+- The public entry points reject `Sync` / `Async` export names. Fake hosts can report adoption, and a fake adapter can mount an SSR placeholder through `SsrPort`.
+- Releasing an application rejects still-pending element injections with `DISPOSED_SESSION` instead of leaving their promises pending. The second `release()` stays a no-op.
+- Disposing the session that owns a singleton drops that slot, so a later registration can create a new instance instead of receiving the disposed one.
+- Releasing a DOM host adapter removes its `context-mount` document listener, so a released adapter no longer wakes pending injections.
+- An error pushed while `errors$` is draining its initialization buffer is delivered to that first subscriber instead of being dropped.
+- A `state$` or `lifecycle$` event raised from the callback that receives the current snapshot or backed status is delivered to that subscriber instead of being dropped.
+- `session$` subscribes to session changes before it emits the current value, so disposing that session inside the first callback still delivers `null`.
+- `session$` also follows host connectivity, so it emits `null` as soon as the host is disconnected, before the session is suspended.
+- `copyState` and `merge` keep a `Object.create(null)` prototype instead of turning the copy into a normal object.
+- `copyState` skips `__proto__`, `constructor`, and `prototype`, the same keys `merge` refuses to copy.
+- Declared `uses` of a transient or prototype factory are created once per registration. Injecting that dependency directly still runs its factory every time.
+- A later `multi` singleton registration is left out of `injectAll` and does not run its factory. The session still receives `SINGLETON_CONFLICT`.
+- A suspended singleton owner does not answer `inject`. After it resumes, callers receive the original instance.
+- A function returned from `onDispose` runs as a cleanup. A promise returned from `onDispose` is still waited on, and its resolved value is not a cleanup.
+- A single-value `context-request` sets `detail.resolved` after `callback`. If `callback` throws, farther providers can still answer.
+- `onAdopt` runs only while the session is `active`. A suspended session ignores adoption and keeps its `suspended` lifecycle event.
+- A skipped `onMount` that returns a promise finishes before `onResume` and activation. If that promise rejects, the session is disposed and does not become `active`.
+- If the new host disconnects while that promise is still pending, the session stays suspended and can be resumed later.
+- The fake host honors `AbortSignal` on `host.on`: an already aborted signal adds no listener, and a later abort removes it.
+- `attach` reports adoption through `onAdopt` only. A host that stays connected does not also emit `onConnect`.
 
 ### Changed
 

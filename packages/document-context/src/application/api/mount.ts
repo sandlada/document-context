@@ -107,17 +107,13 @@ export function mountSession<S, TTarget = unknown>(
                 },
             )
         }
-        if (occupying !== undefined) {
-            if (onConflict === 'reset') {
-                seed = occupying.snapshot()
-            }
-            occupying.dispose('conflict')
-            runtime.unregisterSession(occupying)
-        }
     }
 
     if (token !== null) {
         for (const session of runtime.sessions.values()) {
+            if (session === occupying) {
+                continue
+            }
             if (
                 session.token === token &&
                 (session.status === 'active' || session.status === 'starting')
@@ -129,6 +125,17 @@ export function mountSession<S, TTarget = unknown>(
                 )
             }
         }
+    }
+
+    if (occupying !== undefined && (onConflict === 'replace' || onConflict === 'reset')) {
+        if (onConflict === 'reset') {
+            seed = occupying.snapshot()
+        }
+        occupying.dispose('conflict')
+        runtime.unregisterSession(occupying)
+    }
+
+    if (token !== null) {
         const suspended = findSuspendedSession(runtime, token)
         if (suspended !== undefined && suspended.status === 'suspended') {
             resumeSession(runtime, suspended, host)
@@ -153,7 +160,7 @@ export function mountSession<S, TTarget = unknown>(
         if (registration.lifecycle !== 'singleton') {
             continue
         }
-        if (!claimSingleton(runtime, session, registration.token)) {
+        if (!claimSingleton(runtime, session, registration)) {
             session.reportError(
                 new DocumentContextError(
                     'SINGLETON_CONFLICT',

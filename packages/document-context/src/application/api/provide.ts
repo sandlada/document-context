@@ -13,6 +13,7 @@ import type {
     ProviderRegistration,
 } from '../../domain/model/blueprint'
 import type { TokenLike } from '../../domain/model/token'
+import { assertResolvableToken } from '../../domain/model/token'
 
 export interface ProvideOptions {
     /**
@@ -73,6 +74,10 @@ export function provide<T>(
     factory: Factory<T>,
     options?: ProvideOptions,
 ): BlueprintOperator<any> {
+    assertResolvableToken(token)
+    for (const used of options?.uses ?? []) {
+        assertResolvableToken(used)
+    }
     const registration: ProviderRegistration = {
         token: token as TokenLike,
         factory: factory as Factory<unknown>,
