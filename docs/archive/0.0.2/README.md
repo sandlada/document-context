@@ -29,6 +29,7 @@
 | [16-packaging.md](./16-packaging.md) | 匯出地圖、peer 依賴、tree-shaking 衛生、發布閘門 |
 | [17-migration.md](./17-migration.md) | 從舊版線遷移到 `0.1.x`：破壞性變更對照 |
 | [18-recipes.md](./18-recipes.md) | 可直接使用的配方：渲染、受控輸入、派生狀態、跨 bundle |
+| [19-conformance.md](./19-conformance.md) | 不變式對照表索引與裁定一致性追蹤（TASK1 實作基線） |
 
 ## 一句話
 

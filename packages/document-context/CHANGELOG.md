@@ -11,6 +11,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Keyed resuscitation no longer re-runs `onMount` after it already ran on the first `active` transition; skipped `onMount` hooks still run once on the first resume, then only `onResume` on later resumes.
+- Resuming a keyed session rebinds connectivity watching to the new host so later disconnects suspend correctly.
+- `onSuspend` is not invoked when a session moves from `starting` straight to `suspended` during initialization.
+- Pending injections that wait on a `Session` target are rejected with `DISPOSED_SESSION` when that session is disposed.
+
+### Changed
+
+- Multi-value injection ordering helpers are shared between `injectAll` and the pending retry path (`multi-resolve.ts`).
+
 ## [0.0.2-20261105.a] - Next generation implementation
 
 The initial release of the next-generation architecture (`0.0.2-20261105.a`):

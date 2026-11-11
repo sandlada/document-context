@@ -3,7 +3,7 @@ import { createContext, pipe } from '../../domain/model/blueprint'
 import { defineToken } from '../../domain/model/token'
 import { DocumentContextError } from '../../domain/model/errors'
 import { provide } from './provide'
-import { onMount } from './hooks'
+import { onMount, onSuspend } from './hooks'
 import { createTestApplication } from '../testing/fakes'
 
 const eagerToken = defineToken<number>('public')('app:eager')
@@ -41,6 +41,26 @@ describe('mount', () => {
 
         expect(order).toEqual(['eager', 'mount'])
         expect(session.status).toBe('active')
+    })
+
+    it('[LC #2] 初始化期間轉 suspended 不執行 onSuspend', async () => {
+        const order: string[] = []
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onSuspend(() => {
+                    order.push('suspend')
+                }),
+            ),
+            { token: 'app:no-suspend-on-init' },
+        )(host)
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+        expect(session.status).toBe('suspended')
+        expect(order).toEqual([])
     })
 
     it('[LC #2] 初始化期間確認斷線的 keyed 會話轉 suspended 並 fulfill', async () => {

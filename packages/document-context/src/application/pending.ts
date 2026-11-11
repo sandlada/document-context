@@ -11,12 +11,12 @@ import type { Host } from '../domain/model/session'
 import type { TokenLike } from '../domain/model/token'
 import type { ApplicationRuntime, InjectDirection, PendingRequest } from './context'
 import type { SessionRuntime } from './session'
+import { resolveMultiGroups, settleInjectValues } from './multi-resolve'
 import {
     dispatchRequest,
     locateMulti,
     locateSingle,
     resolveProviderValue,
-    type MultiGroup,
 } from './resolver'
 
 /** The options of a pending request. */
@@ -61,6 +61,7 @@ export function createPendingRequest(
     }
     const { connectivity, scheduler } = runtime.ports.host
     let unsubscribe: (() => void) | null = null
+    let detachOrigin: (() => void) | null = null
     const request: PendingRequest = {
         token: options.token,
         multi: options.multi,
@@ -92,7 +93,34 @@ export function createPendingRequest(
     const release = (): void => {
         unsubscribe?.()
         unsubscribe = null
+        detachOrigin?.()
+        detachOrigin = null
         runtime.pending.delete(request)
+    }
+    if (options.origin !== null) {
+        const origin = options.origin
+        const onOriginDisposed = (): void => {
+            if (request.settled) {
+                return
+            }
+            const reason = origin.abortSignal.reason
+            request.reject(
+                reason instanceof DocumentContextError
+                    ? reason
+                    : new DocumentContextError(
+                          'DISPOSED_SESSION',
+                          'The session was disposed before the injection could finish.',
+                      ),
+            )
+        }
+        if (origin.abortSignal.aborted) {
+            onOriginDisposed()
+        } else {
+            origin.abortSignal.addEventListener('abort', onOriginDisposed, { once: true })
+            detachOrigin = () => {
+                origin.abortSignal.removeEventListener('abort', onOriginDisposed)
+            }
+        }
     }
     unsubscribe = connectivity.subscribe(options.host, (connected) => {
         if (connected) {
@@ -154,7 +182,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
     if (request.multi) {
         const location = locateMulti(runtime, request.host, request.token, request.origin)
         if (location.kind === 'local') {
-            void resolveGroups(runtime, location.groups, request.direction).then(
+            void resolveMultiGroups(runtime, location.groups, request.direction).then(
                 (values) => request.resolve(values),
                 (error: unknown) => request.reject(toError(error)),
             )
@@ -163,7 +191,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
         if (location.kind === 'foreign' || !runtime.ports.host.scope.authoritative) {
             const values = dispatchRequest(runtime, request.host, request.token, true)
             if (values.length > 0) {
-                void settleValues(values, request.direction).then(
+                void settleInjectValues(values, request.direction).then(
                     (settled) => request.resolve(settled),
                     (error: unknown) => request.reject(toError(error)),
                 )
@@ -193,29 +221,6 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
             )
         }
     }
-}
-
-async function resolveGroups(
-    runtime: ApplicationRuntime,
-    groups: readonly MultiGroup[],
-    direction: InjectDirection,
-): Promise<unknown[]> {
-    const ordered = direction === 'from-top-to-bottom' ? [...groups].reverse() : groups
-    const values: unknown[] = []
-    for (const group of ordered) {
-        for (const registration of group.registrations) {
-            values.push(await resolveProviderValue(runtime, group.session, registration))
-        }
-    }
-    return values
-}
-
-async function settleValues(
-    values: unknown[],
-    direction: InjectDirection,
-): Promise<unknown[]> {
-    const settled = await Promise.all(values)
-    return direction === 'from-top-to-bottom' ? settled.reverse() : settled
 }
 
 function toError(error: unknown): DocumentContextError {

@@ -271,6 +271,19 @@ it('[LC #3] 斷線後先經一次微任務重掛確認，節點仍在文件中�
 1. **不得**用一個含多個斷言的「大海嘯測試」獨占一條不變式——每條不變式都要能被單獨定位與單獨失敗。
 2. **不得**有一條不變式完全沒有測試。發現沒有測試時，先補測試；補不上就刪掉該條不變式。
 
+### 15.2.7 裁定台帳（TASK1 基線）
+
+本節記錄 2026-11-06 設計文件與實作稽核裁定之分歧事項、處置方向與影響範圍：
+
+| 裁定 ID | 主題 | 處置方向 | 裁決結論與依據 | 影響範圍 |
+| :--- | :--- | :--- | :--- | :--- |
+| **C-2** | 根入口匯出 `createApplication` | **改程式碼** | `AGENTS.md` §1 明定單一組合根 `src/index.ts` 裝配 ports 至 `createApplication({ host, ssr? })`。根入口匯出已接線版本（`RootApplicationOptions`），`./application` 維持純粹 port 注入版。 | `src/index.ts`、`01-api.md`、`18-recipes.md`、`16-packaging.md` |
+| **C-3** | 根入口 `mount` 對 `serverHost` 支援 | **改文件** | 根入口預設為瀏覽器環境 Application，SSR 掛載應明確透過 `createApplication({ ssr })` 或 `createSsrApplication()`，保持責任單純。 | `09-mount-host.md` §9.3、`18-recipes.md` §18.8 |
+| **D-5** | DOM provider 索引歸屬 Application vs Document | **改文件** | 索引維持 Document 級。這是跨 bundle / 跨 Application 依賴解析與 nearest-wins 冒泡的前提，實作具備清晰防禦機制。更新歸屬表標記為「環境級（Document）」。 | `14-ports.md` §14.6、`PORT #6` |
+| **E-1** | `MOUNT_ABORTED` 錯誤碼存廢 | **改文件／代碼廢止** | `MountOptions.signal` 中止時，平台標準慣例為 `ready` 以 `signal.reason` 拒絕，不另行包裝獨立錯誤碼。廢止 `MOUNT_ABORTED`。 | `12-errors.md`、`17-migration.md`、`src/domain/model/errors.ts` |
+| **E-2** | 快照不可變性保證 | **改文件** | 不凍結快照為效能取捨。語意定為「種子在 `createContext` 複製；呼叫者不得主動修改回傳快照（無 Object.freeze 硬保證）」。 | `01-api.md` §1.5、`13-reactivity.md` §13.2、`API #7` |
+| **E-3** | 暫停期 `native()` 是否拋出 `HOST_INVALID` | **改文件** | DOM 節點回收與否無法在 JS 層可靠判定。`native()` 永遠解參考回傳宿主元素，刪除拋錯條款。 | `12-errors.md` §12.3、§12.4 |
+
 ---
 
 ## 15.3 假排程器

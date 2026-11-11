@@ -26,41 +26,41 @@
 
 ## 12.3 識別碼總表
 
-| `code` | 觸發 | 出現位置 | 致命 |
-| :--- | :--- | :--- | :--- |
-| `UNCONNECTED_HOST` | 瀏覽器中對未連線元素 `mount`；或匿名會話在初始化期間確認斷線 | throw / `ready` 拒絕 | 是 |
-| `HOST_INVALID` | 掛載對象不是元素（文字節點、文件片段、非節點）；或暫停期間 `native()` 對應的節點已被回收 | throw / `ready` 拒絕 | 是 |
-| `TOKEN_INVALID` | token 名稱不符合 `namespace:name` 規則 | throw | 是 |
-| `KEYED_CONFLICT` | 兩個已連線宿主持有同一個 keyed token；或同一宿主的身分衝突 | throw | 是 |
-| `SINGLETON_CONFLICT` | 同一 Application 內重複註冊同名 singleton | `errors$` | 否 |
-| `UNKNOWN_SERVICE` | `Session` 目標上找不到可解析的單值註冊且未開 `wait`；`uses` 宣告的依賴無法解析 | Promise 拒絕 / 串流錯誤 / `ready` 拒絕 | 是 |
-| `CIRCULAR_DEPENDENCY` | `uses` 圖有環，或動態等待繞回自己 | `ready` 拒絕 / Promise 拒絕 / 串流錯誤 | 是 |
-| `DISPOSED_SESSION` | 對已 `disposed` 的會話呼叫 `inject` | Promise 拒絕 / 串流錯誤 | 是 |
-| `HOOK_ERROR` | `onMount` 以外的鉤子拋錯或拒絕 | `errors$` | 否 |
-| `MOUNT_ABORTED` | `MountOptions.signal` 在 `starting` 期間 abort | `ready` 拒絕 | 是 |
-| `FOREIGN_SESSION` | 對某個 `Session` 操作的 Application 不是 mount 出該 Session 的那一個（[11-composition](./11-composition.md) §11.4） | throw | 是 |
-| `INVALID_OPTIONS` | 掛載選項組合不合法（例如 `suspensionTtlMs: Infinity` 未搭配 `retention: 'pinned'`） | throw | 是 |
-| `PENDING_LIMIT_EXCEEDED` | 同一 Application 的 pending 注入數量超過上限 | Promise 拒絕 / 串流錯誤 | 是 |
+| # | `code` | 觸發 | 出現位置 | 致命 |
+| :--- | :--- | :--- | :--- | :--- |
+| `ERR #1` | `UNCONNECTED_HOST` | 瀏覽器中對未連線元素 `mount`；或匿名會話在初始化期間確認斷線 | throw / `ready` 拒絕 | 是 |
+| `ERR #2` | `HOST_INVALID` | 掛載對象不是元素（文字節點、文件片段、非節點）；或暫停期間 `native()` 對應的節點已被回收 | throw / `ready` 拒絕 | 是 |
+| `ERR #3` | `TOKEN_INVALID` | token 名稱不符合 `namespace:name` 規則 | throw | 是 |
+| `ERR #4` | `KEYED_CONFLICT` | 兩個已連線宿主持有同一個 keyed token；或同一宿主的身分衝突 | throw | 是 |
+| `ERR #5` | `SINGLETON_CONFLICT` | 同一 Application 內重複註冊同名 singleton | `errors$` | 否 |
+| `ERR #6` | `UNKNOWN_SERVICE` | `Session` 目標上找不到可解析的單值註冊且未開 `wait`；`uses` 宣告的依賴無法解析 | Promise 拒絕 / 串流錯誤 / `ready` 拒絕 | 是 |
+| `ERR #7` | `CIRCULAR_DEPENDENCY` | `uses` 圖有環，或動態等待繞回自己 | `ready` 拒絕 / Promise 拒絕 / 串流錯誤 | 是 |
+| `ERR #8` | `DISPOSED_SESSION` | 對已 `disposed` 的會話呼叫 `inject` | Promise 拒絕 / 串流錯誤 | 是 |
+| `ERR #9` | `HOOK_ERROR` | `onMount` 以外的鉤子拋錯或拒絕 | `errors$` | 否 |
+| `ERR #10` | `MOUNT_ABORTED` | （已廢止；依 E-1 裁決由 `signal.reason` 直接拒絕，不另設碼） | `ready` 拒絕 | 是 |
+| `ERR #11` | `FOREIGN_SESSION` | 對某個 `Session` 操作的 Application 不是 mount 出該 Session 的那一個（[11-composition](./11-composition.md) §11.4） | throw | 是 |
+| `ERR #12` | `INVALID_OPTIONS` | 掛載選項組合不合法（例如 `suspensionTtlMs: Infinity` 未搭配 `retention: 'pinned'`） | throw | 是 |
+| `ERR #13` | `PENDING_LIMIT_EXCEEDED` | 同一 Application 的 pending 注入數量超過上限 | Promise 拒絕 / 串流錯誤 | 是 |
 
 ## 12.4 逐條語意
 
-### `UNCONNECTED_HOST`
+### `ERR #1` — `UNCONNECTED_HOST`
 
 瀏覽器的掛載對象必須是**已連線**的元素。未連線時 `mount` 同步拋出。
 
 初始化期間被確認斷線的**匿名**會話，屬於同一種失敗：`ready` 以 `UNCONNECTED_HOST` 拒絕，會話 `disposed`。keyed 會話在同樣情況下**不**失敗，而是轉入 `suspended`（見 [02-lifecycle](./02-lifecycle.md) §2.3）。
 
-### `HOST_INVALID`
+### `ERR #2` — `HOST_INVALID`
 
 掛載對象必須是元素。文字節點、文件片段、任意非節點物件一律拒絕。
 
 暫停期間 `native()` 的語意是「解參考或拋錯」：節點仍可取回時回傳它；節點已被回收時拋 `HOST_INVALID`。恢復後 `native()` 重新指向新宿主。
 
-### `TOKEN_INVALID`
+### `ERR #3` — `TOKEN_INVALID`
 
 `defineToken` 的公開名、`mount` 的 `token` 選項、寫回宿主的鍵值字串，共用同一套驗證規則。**私有 token 不走這條規則**——它的名字僅供除錯。
 
-### `KEYED_CONFLICT`
+### `ERR #4` — `KEYED_CONFLICT`
 
 兩種情形：
 
@@ -69,45 +69,45 @@
 
 `onConflict: 'replace'` 與 `'reset'` **只**處理同宿主衝突；跨宿主的 keyed 衝突是硬失敗。
 
-### `SINGLETON_CONFLICT`
+### `ERR #5` — `SINGLETON_CONFLICT`
 
 同一 Application 內重複註冊同名 singleton 時，**先註冊者勝出**，後者被忽略。後者的會話在 `active` 之前收到一筆 `SINGLETON_CONFLICT`。這是**非致命**的：會話照常 `active`。
 
-### `UNKNOWN_SERVICE`
+### `ERR #6` — `UNKNOWN_SERVICE`
 
 `Session` 目標的 `inject` 在藍圖與既有 `active` 祖先都找不到該 token 時，預設**立即拒絕**。需要等待「也許稍後會出現的祖先」時傳 `wait: true`。
 
 `uses` 宣告的依賴若無法解析，`ready` 以 `UNKNOWN_SERVICE` 拒絕——宣告錯了就是錯了，不會等到永遠。
 
-### `CIRCULAR_DEPENDENCY`
+### `ERR #7` — `CIRCULAR_DEPENDENCY`
 
 `uses` 圖有環時，環上的工廠**不執行**，`ready` 拒絕。動態等待繞回自己時同理。
 
-### `DISPOSED_SESSION`
+### `ERR #8` — `DISPOSED_SESSION`
 
 對已銷毀的會話解析依賴。`update` 不拋錯，它回傳 `false`（見 [01-api](./01-api.md) §1.5）。
 
-### `HOOK_ERROR`
+### `ERR #9` — `HOOK_ERROR`
 
 `onMount` 以外的鉤子（`onSuspend` / `onResume` / `onAdopt` / `onDispose`）拋錯時，錯誤封裝成 `HOOK_ERROR` 推入 `errors$`，**其餘鉤子繼續執行**，銷毀流程不中斷。
 
 `onMount` 失敗是另一回事：`ready` 拒絕、會話 `disposed`（見 [02-lifecycle](./02-lifecycle.md) §2.2）。
 
-### `MOUNT_ABORTED`
+### `ERR #10` — `MOUNT_ABORTED`（已廢止）
 
-`MountOptions.signal` 在 `starting` 期間 abort。`ready` 以**平台慣例**拒絕——預設是 `signal.reason`（通常為 `AbortError`），不保證是本庫的錯誤型別。進入 `active` 之後，`signal` 不再有任何作用；取消那次掛載的方式是 `dispose(session)`。
+`MountOptions.signal` 在 `starting` 期間 abort。`ready` 以**平台慣例**拒絕——預設是 `signal.reason`（通常為 `AbortError`），不保證是本庫的錯誤型別。進入 `active` 之後，`signal` 不再有任何作用；取消那次掛載的方式是 `dispose(session)`。依裁定 E-1，此識別碼已廢止，不作為獨立 ErrorCode 產生。
 
-### `FOREIGN_SESSION`
+### `ERR #11` — `FOREIGN_SESSION`
 
 對某個 `Session` 做 `update` / `inject` / `dispose` 的 Application，必須是 mount 出該 Session 的那一個。跨實例操作同一個 `Session` **必須被拒絕**，不得靜默 `no-op`——靜默失敗會讓跨實例的 bug 難以追查（見 [11-composition](./11-composition.md) §11.4）。
 
 這個碼只在**動詞的目標是 Session** 時出現：目標是元素時，元素只屬於它的文件，不存在跨 Application 的問題。
 
-### `INVALID_OPTIONS`
+### `ERR #12` — `INVALID_OPTIONS`
 
 掛載選項的組合檢查失敗。`suspensionTtlMs: Infinity` 必須同時傳 `retention: 'pinned'`，否則 `mount` 拋出此碼（**不是**一般 `Error`）。
 
-### `PENDING_LIMIT_EXCEEDED`
+### `ERR #13` — `PENDING_LIMIT_EXCEEDED`
 
 同一 Application 的 pending 注入表達到上限時，新的等待請求被拒絕，而不是無限累積。上限值是 Application 級設定（見 [13-reactivity](./13-reactivity.md) 與 [14-ports](./14-ports.md)）。被拒絕的請求**不**寫入 `errors$`——它是呼叫者自己的請求失敗，由呼叫者處理。
 

@@ -9,6 +9,7 @@
 import type { Host } from '../../domain/model/session'
 import type { ApplicationRuntime } from '../context'
 import type { SessionRuntime } from '../session'
+import { watchConnectivity } from './disconnect'
 import { runHooksSync } from './hooks'
 
 /**
@@ -24,7 +25,9 @@ export function suspendSession(runtime: ApplicationRuntime, session: SessionRunt
     const token = session.token
     session.detachContextRequest()
     runtime.ports.host.scope.undeclare(session.adapterHost)
-    runHooksSync(session, 'suspend')
+    if (session.status === 'active') {
+        runHooksSync(session, 'suspend')
+    }
     session.markSuspended()
     if (token !== null) {
         runtime.keyed.set(token, session)
@@ -73,7 +76,14 @@ export function resumeSession(
         }
     }
     session.setSuspensionTimer(() => undefined)
-    runHooksSync(session, 'mount')
+    session.setConnectivityWatcher(watchConnectivity(runtime, session))
+    try {
+        session.runMountHooksSync()
+    } catch (error) {
+        session.fail(error)
+        session.dispose('explicit')
+        return
+    }
     runHooksSync(session, 'resume')
     session.activate(true)
 }

@@ -217,6 +217,30 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
         await runHooks(this, 'mount')
     }
 
+    /**
+     * Run the `onMount` hooks synchronously, at most once.
+     *
+     * Used on the resuscitation path when initialization skipped `onMount`. Failures propagate to
+     * the caller so the session can be disposed without entering `active`.
+     */
+    runMountHooksSync(): void {
+        if (this.mountHooksRan) {
+            return
+        }
+        this.mountHooksRan = true
+        for (const hook of this.blueprint.hooks) {
+            if (hook.type !== 'mount') {
+                continue
+            }
+            const result = hook.hook(this)
+            if (typeof result === 'function') {
+                this.cleanups.push(result)
+            } else if (result instanceof Promise) {
+                this.pendingCleanups.push(result.catch(() => undefined))
+            }
+        }
+    }
+
     /** Whether the `onMount` hooks already ran. */
     get didRunMountHooks(): boolean {
         return this.mountHooksRan

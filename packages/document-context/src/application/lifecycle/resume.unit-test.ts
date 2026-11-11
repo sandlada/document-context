@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
-import { onResume } from '../api/hooks'
+import { onMount, onResume } from '../api/hooks'
 import { createApplication } from '../application'
 import { createTestApplication } from '../testing/fakes'
 
@@ -50,6 +50,80 @@ describe('resume', () => {
         app.mount(blueprint, { token: 'app:resume-hook' })(adapter.createHost())
 
         expect(resumed).toEqual(['resume'])
+    })
+
+    it('[LC #8] 恢復時不重複執行已跑過的 onMount', async () => {
+        const order: string[] = []
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => {
+                order.push('mount')
+            }),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:mount-once' })(first)
+        await session.ready
+        expect(order).toEqual(['mount'])
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        const second = adapter.createHost()
+        app.mount(blueprint, { token: 'app:mount-once' })(second)
+        expect(order).toEqual(['mount', 'resume'])
+    })
+
+    it('[LC #2] 初始化期 suspended 首次恢復補跑 onMount', async () => {
+        const order: string[] = []
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => {
+                order.push('mount')
+            }),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:deferred-mount' })(first)
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+        expect(session.status).toBe('suspended')
+        expect(order).toEqual([])
+
+        const second = adapter.createHost()
+        app.mount(blueprint, { token: 'app:deferred-mount' })(second)
+        expect(order).toEqual(['mount', 'resume'])
+        expect(session.status).toBe('active')
+    })
+
+    it('[LC #8] 恢復時 onMount 清理函式只登記一次', async () => {
+        let cleanupRuns = 0
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => {
+                return () => {
+                    cleanupRuns += 1
+                }
+            }),
+            onResume(() => undefined),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:cleanup-once' })(first)
+        await session.ready
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        app.mount(blueprint, { token: 'app:cleanup-once' })(adapter.createHost())
+
+        app.dispose(session)
+        expect(cleanupRuns).toBe(1)
     })
 
     it('[LC #6] TTL 到期以 reason ttl 銷毀', async () => {

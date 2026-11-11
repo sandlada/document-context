@@ -13,7 +13,8 @@ import type { ApplicationRuntime, InjectDirection, PendingRequest } from '../con
 import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
-import { dispatchRequest, locateMulti, resolveProviderValue, type MultiGroup } from '../resolver'
+import { resolveMultiGroups, settleInjectValues } from '../multi-resolve'
+import { dispatchRequest, locateMulti } from '../resolver'
 
 /** Options of a multi-value injection. */
 export interface InjectAllOptions {
@@ -91,7 +92,7 @@ export function beginInjectAll<TTarget = unknown>(
     const location = locateMulti(runtime, host, token, origin)
     if (location.kind === 'local') {
         return {
-            promise: resolveGroups(runtime, location.groups, direction),
+            promise: resolveMultiGroups(runtime, location.groups, direction),
             cancel: () => undefined,
         }
     }
@@ -100,7 +101,7 @@ export function beginInjectAll<TTarget = unknown>(
         const values = dispatchRequest(runtime, host, token, true)
         if (values.length > 0) {
             return {
-                promise: settle(values, direction),
+                promise: settleInjectValues(values, direction),
                 cancel: () => undefined,
             }
         }
@@ -209,22 +210,3 @@ export function injectAllTokens$<T, TTarget = unknown>(
     })
 }
 
-async function resolveGroups(
-    runtime: ApplicationRuntime,
-    groups: readonly MultiGroup[],
-    direction: InjectDirection,
-): Promise<unknown[]> {
-    const ordered = direction === 'from-top-to-bottom' ? [...groups].reverse() : groups
-    const values: unknown[] = []
-    for (const group of ordered) {
-        for (const registration of group.registrations) {
-            values.push(await resolveProviderValue(runtime, group.session, registration))
-        }
-    }
-    return values
-}
-
-async function settle(values: unknown[], direction: InjectDirection): Promise<unknown[]> {
-    const settled = await Promise.all(values)
-    return direction === 'from-top-to-bottom' ? settled.reverse() : settled
-}

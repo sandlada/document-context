@@ -36,6 +36,34 @@ describe('inject', () => {
         })
     })
 
+    it('[ERR #1] 元素 pending 確認斷線以 UNCONNECTED_HOST 拒絕且不寫入 errors$', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({}))(adapter.createHost())
+        await session.ready
+
+        const errors: string[] = []
+        session.errors$.subscribe((error) => errors.push(error.code))
+
+        const disconnected = app.inject(themeToken)(host)
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+
+        await expect(disconnected).rejects.toMatchObject({ code: 'UNCONNECTED_HOST' })
+        expect(errors).toEqual([])
+    })
+
+    it('[ERR #8] Session 目標等待在會話 dispose 後以 DISPOSED_SESSION 拒絕', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext({}))(adapter.createHost())
+        await session.ready
+
+        const waiting = app.inject(missingToken, { wait: true })(session)
+        app.dispose(session)
+
+        await expect(waiting).rejects.toMatchObject({ code: 'DISPOSED_SESSION' })
+    })
+
     it('[SCOPE #12] 元素目標在提供者出現前保持 pending', async () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()
