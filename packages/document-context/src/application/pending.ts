@@ -13,6 +13,7 @@ import type { ApplicationRuntime, InjectDirection, PendingRequest } from './cont
 import type { SessionRuntime } from './session'
 import { resolveMultiGroups, settleInjectGroups } from './multi-resolve'
 import {
+    chainFrom,
     dispatchMultiRequest,
     dispatchRequest,
     locateMulti,
@@ -94,6 +95,7 @@ export function createPendingRequest(
     const release = (): void => {
         unsubscribe?.()
         unsubscribe = null
+        stopStructure()
         detachOrigin?.()
         detachOrigin = null
         runtime.pending.delete(request)
@@ -123,6 +125,30 @@ export function createPendingRequest(
             }
         }
     }
+    const structureStops: (() => void)[] = []
+    const stopStructure = (): void => {
+        for (const stop of structureStops.splice(0)) {
+            stop()
+        }
+    }
+    const watchStructure = (): void => {
+        stopStructure()
+        if (request.settled) {
+            return
+        }
+        for (const host of chainFrom(options.host)) {
+            structureStops.push(
+                connectivity.subscribeStructure(host, () => {
+                    if (request.settled) {
+                        return
+                    }
+                    watchStructure()
+                    schedulePendingRetry(runtime)
+                }),
+            )
+        }
+    }
+    watchStructure()
     unsubscribe = connectivity.subscribe(options.host, (connected) => {
         if (connected) {
             return

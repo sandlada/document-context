@@ -80,4 +80,30 @@ describe('dom late binding', () => {
 
         subscription.unsubscribe()
     })
+
+    it('[SCOPE #12] 元素搬到已有提供者下面時 pending 注入會完成', async () => {
+        const adapter = createDomHostAdapter()
+        const app = createApplication({ host: adapter })
+        const providerHost = element('section')
+        const stray = element('span')
+
+        const session = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+        )(providerHost)
+        await session.ready
+
+        let value: string | undefined
+        const pending = app.inject(themeToken)(stray).then((resolved) => {
+            value = resolved
+        })
+        pending.catch(() => undefined)
+        await flush()
+        expect(value).toBeUndefined()
+
+        providerHost.appendChild(stray)
+        await flush()
+
+        expect(value).toBe('dark')
+        await pending
+    })
 })
