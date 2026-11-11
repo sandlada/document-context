@@ -168,4 +168,41 @@ describe('injectAll', () => {
             code: 'UNKNOWN_SERVICE',
         })
     })
+
+    it('[SCOPE #8] 元素目標 injectAll 繞回 starting 中的自己以 CIRCULAR_DEPENDENCY 拒絕', async () => {
+        const token = defineToken<string>('public')('app:multi-self')
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    token,
+                    async ({ session: current }) => {
+                        await Promise.resolve()
+                        const values = await app.injectAll(token)(current.host.native())
+                        return values[0] ?? 'missing'
+                    },
+                    { multi: true, eager: true },
+                ),
+            ),
+        )(host)
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const outcome = await Promise.race([
+            session.ready.then(
+                () => 'ready',
+                (error: unknown) => error,
+            ),
+            new Promise<string>((resolve) => {
+                timer = setTimeout(() => resolve('timeout'), 300)
+            }),
+        ])
+        if (timer !== undefined) {
+            clearTimeout(timer)
+        }
+
+        expect(outcome).toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
+        expect(session.status).toBe('disposed')
+    })
 })

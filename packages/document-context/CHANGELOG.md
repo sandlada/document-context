@@ -53,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A second `transient` or `prototype` injection starts another factory while the first is still running, instead of rejecting `CIRCULAR_DEPENDENCY`. `scoped` and `singleton` injections still share the in-flight promise.
 - An element `inject` of a factory that is already running on a `starting` session joins that factory. When the caller is the factory itself, the injection is rejected with `CIRCULAR_DEPENDENCY` instead of waiting on `ready`.
 - An in-flight `inject` rejects with `DISPOSED_SESSION` when its session is disposed. Unsubscribing one caller still leaves the shared factory running.
+- An element `injectAll` of a multi factory already running on a `starting` session joins that factory. When the caller is the factory itself, the collection is rejected with `CIRCULAR_DEPENDENCY` instead of waiting on `ready`.
 
 ### Changed
 

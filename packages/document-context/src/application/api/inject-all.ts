@@ -15,7 +15,7 @@ import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
 import { resolveMultiGroups, settleInjectGroups } from '../multi-resolve'
-import { dispatchMultiRequest, locateMulti } from '../resolver'
+import { dispatchMultiRequest, findInFlightMultiGroups, locateMulti } from '../resolver'
 import { completeOnUnsubscribe } from './complete-on-unsubscribe'
 
 /** Options of a multi-value injection. */
@@ -96,6 +96,13 @@ export function beginInjectAll<TTarget = unknown>(
     if (location.kind === 'local') {
         return {
             promise: resolveMultiGroups(runtime, location.groups, direction),
+            cancel: () => undefined,
+        }
+    }
+    const inFlight = findInFlightMultiGroups(runtime, host, token)
+    if (inFlight.length > 0) {
+        return {
+            promise: resolveMultiGroups(runtime, inFlight, direction),
             cancel: () => undefined,
         }
     }

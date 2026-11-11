@@ -177,6 +177,43 @@ export function findInFlightRegistration(
 }
 
 /**
+ * Multi-value factories that have already started and have not finished.
+ *
+ * Groups stay in nearest-first order. A caller that is one of those factories is rejected when
+ * the value is resolved; an outside caller shares the in-flight promises.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the resolution starts from.
+ * @param token - The token to collect.
+ * @returns The in-flight groups, nearest first.
+ */
+export function findInFlightMultiGroups(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+): MultiGroup[] {
+    const groups: MultiGroup[] = []
+    for (const host of chainFrom(from)) {
+        const session = runtime.sessions.get(host)
+        if (session === undefined) {
+            continue
+        }
+        const registrations = session.blueprint.providers.filter(
+            (registration) =>
+                registration.token === token &&
+                registration.multi &&
+                session.resolving.has(registration) &&
+                isWinningSingleton(runtime, registration),
+        )
+        if (registrations.length === 0) {
+            continue
+        }
+        groups.push({ session, registrations })
+    }
+    return groups
+}
+
+/**
  * A singleton is owned by the first session that registered it.
  *
  * A later registration is ignored at resolution time, not only reported on `errors$`.
