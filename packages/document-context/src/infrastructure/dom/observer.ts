@@ -17,6 +17,14 @@ export interface DomObserver {
      * @returns A function that stops watching.
      */
     observe(element: Element, listener: (connected: boolean, owner?: unknown) => void): () => void
+    /**
+     * Watch parent changes that are not disconnects.
+     *
+     * @param element - The element to watch.
+     * @param listener - Called when the element moves inside a document.
+     * @returns A function that stops watching.
+     */
+    observeStructure(element: Element, listener: () => void): () => void
     /** Stop observing and release the underlying `MutationObserver`. */
     release(): void
 }
@@ -24,7 +32,9 @@ export interface DomObserver {
 interface Watched {
     connected: boolean
     ownerDocument: Document
+    parent: ParentNode | null
     readonly listeners: Set<(connected: boolean, owner?: unknown) => void>
+    readonly structureListeners: Set<() => void>
 }
 
 /**
@@ -77,6 +87,9 @@ export function createDomObserver(document: Document, scheduler: SchedulerPort):
             const connected = element.isConnected
             const currentDoc = element.ownerDocument
             const docChanged = currentDoc !== entry.ownerDocument
+            const parent = element.parentNode
+            const parentChanged = parent !== entry.parent
+            entry.parent = parent
             if (docChanged) {
                 entry.ownerDocument = currentDoc
                 ensureObserverFor(currentDoc)
@@ -86,41 +99,64 @@ export function createDomObserver(document: Document, scheduler: SchedulerPort):
                 for (const listener of [...entry.listeners]) {
                     listener(connected, docChanged ? currentDoc : undefined)
                 }
+            } else if (parentChanged) {
+                for (const listener of [...entry.structureListeners]) {
+                    listener()
+                }
             }
         }
         pruneObservers()
     }
 
+    const releaseEntry = (element: Element): void => {
+        const current = watched.get(element)
+        if (current === undefined) {
+            return
+        }
+        if (current.listeners.size === 0 && current.structureListeners.size === 0) {
+            watched.delete(element)
+        }
+        if (watched.size === 0) {
+            for (const obs of observers.values()) {
+                obs.disconnect()
+            }
+            observers.clear()
+        } else {
+            pruneObservers()
+        }
+    }
+
+    const ensure = (element: Element): Watched => {
+        let entry = watched.get(element)
+        if (entry === undefined) {
+            entry = {
+                connected: element.isConnected,
+                ownerDocument: element.ownerDocument,
+                parent: element.parentNode,
+                listeners: new Set(),
+                structureListeners: new Set(),
+            }
+            watched.set(element, entry)
+            ensureObserverFor(element.ownerDocument)
+        }
+        return entry
+    }
+
     return {
         observe(element: Element, listener: (connected: boolean, owner?: unknown) => void): () => void {
-            let entry = watched.get(element)
-            if (entry === undefined) {
-                entry = {
-                    connected: element.isConnected,
-                    ownerDocument: element.ownerDocument,
-                    listeners: new Set(),
-                }
-                watched.set(element, entry)
-                ensureObserverFor(element.ownerDocument)
-            }
+            const entry = ensure(element)
             entry.listeners.add(listener)
             return () => {
-                const current = watched.get(element)
-                if (current === undefined) {
-                    return
-                }
-                current.listeners.delete(listener)
-                if (current.listeners.size === 0) {
-                    watched.delete(element)
-                }
-                if (watched.size === 0) {
-                    for (const obs of observers.values()) {
-                        obs.disconnect()
-                    }
-                    observers.clear()
-                } else {
-                    pruneObservers()
-                }
+                entry.listeners.delete(listener)
+                releaseEntry(element)
+            }
+        },
+        observeStructure(element: Element, listener: () => void): () => void {
+            const entry = ensure(element)
+            entry.structureListeners.add(listener)
+            return () => {
+                entry.structureListeners.delete(listener)
+                releaseEntry(element)
             }
         },
         release(): void {

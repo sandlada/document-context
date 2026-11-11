@@ -68,6 +68,11 @@ export function sessionStream(
                         emit()
                     }),
                 )
+                stops.push(
+                    runtime.ports.host.connectivity.subscribeStructure(candidate, () => {
+                        emit()
+                    }),
+                )
             }
         }
         const emit = (): void => {

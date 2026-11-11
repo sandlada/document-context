@@ -15,6 +15,7 @@ const host: Host = {
 const connectivity: ConnectivityPort = {
     isConnected: () => true,
     subscribe: () => () => undefined,
+    subscribeStructure: () => () => undefined,
 }
 
 const scheduler: SchedulerPort = {

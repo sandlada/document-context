@@ -34,6 +34,17 @@ export interface ConnectivityPort {
      * @returns A function that removes the subscription.
      */
     subscribe(host: Host, listener: (connected: boolean, owner?: unknown) => void): () => void
+    /**
+     * Subscribe to ancestor-chain changes that keep the host connected.
+     *
+     * Moving a node inside the document is not a disconnect, but it can change which session is
+     * nearest. Listeners are not told that the host connected or disconnected.
+     *
+     * @param host - The host to watch.
+     * @param listener - Invoked when the host's parent changes while it stays in a document.
+     * @returns A function that removes the subscription.
+     */
+    subscribeStructure(host: Host, listener: () => void): () => void
 }
 
 /**

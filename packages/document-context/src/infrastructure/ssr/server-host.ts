@@ -116,6 +116,9 @@ export function createSsrHostAdapter(): SsrHostAdapter {
         subscribe(_host: Host, _listener: (connected: boolean) => void): () => void {
             return () => undefined
         },
+        subscribeStructure(_host: Host, _listener: () => void): () => void {
+            return () => undefined
+        },
     }
 
     const tokens: TokensPort = {

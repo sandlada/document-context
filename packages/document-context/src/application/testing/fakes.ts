@@ -288,12 +288,15 @@ export function createFakeHostAdapter(): FakeHostAdapter {
             return states.get(host) ?? true
         },
         subscribe(host: Host, listener: (connected: boolean, owner?: unknown) => void): () => void {
-            const set = subscriptions.get(host) ?? new Set<(connected: boolean) => void>()
+            const set = subscriptions.get(host) ?? new Set<(connected: boolean, owner?: unknown) => void>()
             set.add(listener)
             subscriptions.set(host, set)
             return () => {
                 set.delete(listener)
             }
+        },
+        subscribeStructure(_host: Host, _listener: () => void): () => void {
+            return () => undefined
         },
     }
 

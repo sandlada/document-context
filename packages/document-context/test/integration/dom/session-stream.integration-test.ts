@@ -82,4 +82,33 @@ describe('dom session stream', () => {
         expect(session.status).toBe('active')
         expect(app.sessionAt(otherLeaf)).toBe(session)
     })
+
+    it('[RX #9] 節點在文件內搬家時 session$ 改送新的最近會話', async () => {
+        const adapter = createDomHostAdapter()
+        const app = createApplication({ host: adapter })
+        const outer = element('section')
+        const inner = element('div')
+        const leaf = element('span')
+        outer.appendChild(inner)
+        inner.appendChild(leaf)
+
+        const outerSession = app.mount(pipe(createContext({})))(outer)
+        const innerSession = app.mount(pipe(createContext({})))(inner)
+        await outerSession.ready
+        await innerSession.ready
+
+        const seen: (Session<any, any> | null)[] = []
+        const subscription = app.session$(leaf).subscribe((session) => {
+            seen.push(session)
+        })
+        expect(seen).toEqual([innerSession])
+
+        outer.appendChild(leaf)
+        await flush()
+
+        expect(innerSession.status).toBe('active')
+        expect(app.sessionAt(leaf)).toBe(outerSession)
+        expect(seen[seen.length - 1]).toBe(outerSession)
+        subscription.unsubscribe()
+    })
 })

@@ -46,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `attach` reports adoption through `onAdopt` only. A host that stays connected does not also emit `onConnect`.
 - `setDefaultApplication` releases the previous default application and the DOM adapter this module created for it.
 - Unsubscribing `inject$` or `injectAll$` completes the stream and does not send an error or write `errors$`.
+- Moving a connected element inside the document updates `session$` to the new nearest session without treating the move as a disconnect.
 
 ### Changed
 

@@ -102,6 +102,12 @@ export function createDomHostAdapter(options?: {
             }
             return observer.observe(host.element, listener)
         },
+        subscribeStructure(host: Host, listener: () => void): () => void {
+            if (!isDomHost(host)) {
+                return () => undefined
+            }
+            return observer.observeStructure(host.element, listener)
+        },
     }
 
     const tokens: TokensPort = {
