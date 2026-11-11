@@ -181,6 +181,9 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
     return prototype === Object.prototype || prototype === null
 }
 
+/** Keys that must not be copied or merged. Assignment would change the prototype. */
+export const NON_COPIED_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+
 /**
  * Deep-copy plain objects and arrays, leaving every other value by reference.
  *
@@ -206,9 +209,14 @@ export function copyState<T>(value: T, seen: WeakMap<object, unknown> = new Weak
         if (cached !== undefined) {
             return cached as T
         }
-        const copy: Record<string, unknown> = {}
+        const copy: Record<string, unknown> = Object.create(
+            Object.getPrototypeOf(value) as object | null,
+        )
         seen.set(value, copy)
         for (const [key, item] of Object.entries(value)) {
+            if (NON_COPIED_KEYS.has(key)) {
+                continue
+            }
             copy[key] = copyState(item, seen)
         }
         return copy as unknown as T

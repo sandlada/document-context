@@ -52,4 +52,25 @@ describe('blueprint', () => {
         expect(isPlainObject(null)).toBe(false)
         expect(isPlainObject(new Date())).toBe(false)
     })
+
+    it('[API #7] copyState 保留 Object.create(null) 的原型', () => {
+        const source = Object.create(null) as Record<string, number>
+        source['count'] = 1
+        const copy = copyState(source)
+
+        expect(Object.getPrototypeOf(copy)).toBe(null)
+        expect(copy['count']).toBe(1)
+        expect(copy).not.toBe(source)
+    })
+
+    it('[API #7] copyState 不複製 __proto__、constructor 與 prototype', () => {
+        const source = JSON.parse('{"__proto__": {"polluted": true}, "ok": 1}') as {
+            ok: number
+        }
+        const copy = copyState(source)
+
+        expect(copy.ok).toBe(1)
+        expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
+        expect(({} as Record<string, unknown>)['polluted']).toBeUndefined()
+    })
 })

@@ -5,9 +5,7 @@
  * next snapshot themselves, for example `update((state) => merge(state, { user: { name: 'Ada' } }))`.
  */
 
-import { isPlainObject } from '../../domain/model/blueprint'
-
-const FORBIDDEN_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+import { isPlainObject, NON_COPIED_KEYS } from '../../domain/model/blueprint'
 
 /**
  * Deep-merge two values.
@@ -67,17 +65,19 @@ function mergeValue(base: unknown, patch: unknown, stack: Set<object>): unknown 
         stack.add(base as object)
     }
     try {
-        const result: Record<string, unknown> = {}
+        const result: Record<string, unknown> = Object.create(
+            (baseIsPlain ? Object.getPrototypeOf(base) : Object.getPrototypeOf(patch)) as object | null,
+        )
         if (baseIsPlain) {
             for (const [key, value] of Object.entries(base as Record<string, unknown>)) {
-                if (FORBIDDEN_KEYS.has(key)) {
+                if (NON_COPIED_KEYS.has(key)) {
                     continue
                 }
-                result[key] = value
+                result[key] = isPlainObject(value) ? mergeValue(value, {}, stack) : value
             }
         }
         for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-            if (FORBIDDEN_KEYS.has(key)) {
+            if (NON_COPIED_KEYS.has(key)) {
                 continue
             }
             result[key] = isPlainObject(value)

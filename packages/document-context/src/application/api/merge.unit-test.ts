@@ -12,10 +12,24 @@ describe('merge', () => {
     })
 
     it('[API #6] merge 不改變來源物件', () => {
-        const base = { nested: { value: 1 } }
-        merge(base, { nested: { value: 2 } })
+        const nested = { value: 1 }
+        const base = { nested, list: [1] }
+        const result = merge(base, { extra: true })
 
         expect(base.nested.value).toBe(1)
+        expect(result.nested).not.toBe(nested)
+        result.nested.value = 9
+        expect(base.nested.value).toBe(1)
+        expect(result.list).toBe(base.list)
+    })
+
+    it('[API #6] merge 保留 Object.create(null) 的原型', () => {
+        const base = Object.create(null) as { count: number }
+        base.count = 1
+        const result = merge(base, { extra: true })
+
+        expect(Object.getPrototypeOf(result)).toBe(null)
+        expect(result).toEqual({ count: 1, extra: true })
     })
 
     it('[API #6] 陣列、null 與日期整顆替換', () => {
