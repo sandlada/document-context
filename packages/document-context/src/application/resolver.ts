@@ -370,15 +370,75 @@ function factoryIsAncestor(registration: ProviderRegistration): boolean {
         || stack.includes(`${marker}@`)
 }
 
+function followSessionAbort(
+    session: SessionRuntime<any>,
+    promise: Promise<unknown>,
+): Promise<unknown> {
+    if (session.abortSignal.aborted) {
+        return Promise.reject(disposalError(session))
+    }
+    return new Promise((resolve, reject) => {
+        let settled = false
+        const finish = (settle: () => void): void => {
+            if (settled) {
+                return
+            }
+            settled = true
+            session.abortSignal.removeEventListener('abort', onAbort)
+            settle()
+        }
+        const onAbort = (): void => {
+            finish(() => {
+                reject(disposalError(session))
+            })
+        }
+        session.abortSignal.addEventListener('abort', onAbort, { once: true })
+        promise.then(
+            (value) => {
+                finish(() => {
+                    resolve(value)
+                })
+            },
+            (error: unknown) => {
+                finish(() => {
+                    reject(error)
+                })
+            },
+        )
+    })
+}
+
+function disposalError(session: SessionRuntime<any>): DocumentContextError {
+    const reason = session.abortSignal.reason
+    if (reason instanceof DocumentContextError) {
+        return reason
+    }
+    return new DocumentContextError(
+        'DISPOSED_SESSION',
+        'The session was disposed before the injection could finish.',
+    )
+}
+
 /**
  * Resolve the value of a provider registration, honouring its lifecycle.
+ *
+ * The returned promise follows the session's abort boundary. Disposing the session rejects an
+ * in-flight wait with `DISPOSED_SESSION`. Unsubscribing one caller does not cancel the factory.
  *
  * @param runtime - The application runtime.
  * @param session - The session the registration belongs to.
  * @param registration - The registration.
  * @returns The value.
  */
-export async function resolveProviderValue(
+export function resolveProviderValue(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): Promise<unknown> {
+    return followSessionAbort(session, produceProviderValue(runtime, session, registration))
+}
+
+async function produceProviderValue(
     runtime: ApplicationRuntime,
     session: SessionRuntime<any>,
     registration: ProviderRegistration,

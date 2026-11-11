@@ -240,4 +240,39 @@ describe('inject', () => {
 
         await expect(app.inject(themeToken)(inner)).resolves.toBe('inner')
     })
+
+    it('[LC #10] 進行中的工廠等待在 dispose 時以 DISPOSED_SESSION 結束', async () => {
+        const { app, adapter } = createTestApplication()
+        let release: (() => void) | undefined
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(themeToken, () => new Promise<string>((resolve) => {
+                    release = () => resolve('late')
+                })),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const pending = app.inject(themeToken)(session)
+        const settled = pending.then(
+            () => 'fulfilled',
+            (error: unknown) => error,
+        )
+        app.dispose(session)
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const outcome = await Promise.race([
+            settled,
+            new Promise<string>((resolve) => {
+                timer = setTimeout(() => resolve('timeout'), 300)
+            }),
+        ])
+        if (timer !== undefined) {
+            clearTimeout(timer)
+        }
+        release?.()
+
+        expect(outcome).toMatchObject({ code: 'DISPOSED_SESSION' })
+    })
 })
