@@ -51,6 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A rejected promise from `onDispose`, `onSuspend`, or `onResume` is reported on `errors$` as `HOOK_ERROR`. The resolved value is still not used as a cleanup.
 - A dynamic `inject` that circles back to a factory already waiting on that call is rejected with `CIRCULAR_DEPENDENCY` instead of deadlocking. Joining an in-flight factory from outside it still shares the same promise.
 - A second `transient` or `prototype` injection starts another factory while the first is still running, instead of rejecting `CIRCULAR_DEPENDENCY`. `scoped` and `singleton` injections still share the in-flight promise.
+- An element `inject` of a factory that is already running on a `starting` session joins that factory. When the caller is the factory itself, the injection is rejected with `CIRCULAR_DEPENDENCY` instead of waiting on `ready`.
 
 ### Changed
 

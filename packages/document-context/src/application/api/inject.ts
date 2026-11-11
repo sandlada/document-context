@@ -14,7 +14,7 @@ import type { ApplicationRuntime, PendingRequest } from '../context'
 import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
-import { dispatchRequest, locateSingle, resolveProviderValue } from '../resolver'
+import { dispatchRequest, findInFlightRegistration, locateSingle, resolveProviderValue } from '../resolver'
 import { completeOnUnsubscribe } from './complete-on-unsubscribe'
 
 /** Options of a single-value injection. */
@@ -101,6 +101,13 @@ export function beginInjection<TTarget = unknown>(
     if (location.kind === 'local') {
         return {
             promise: resolveProviderValue(runtime, location.session, location.registration),
+            cancel: () => undefined,
+        }
+    }
+    const inFlight = findInFlightRegistration(runtime, host, token)
+    if (inFlight !== undefined) {
+        return {
+            promise: resolveProviderValue(runtime, inFlight.session, inFlight.registration),
             cancel: () => undefined,
         }
     }

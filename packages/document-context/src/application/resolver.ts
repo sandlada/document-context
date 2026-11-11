@@ -147,6 +147,36 @@ export function locateSingle(
 }
 
 /**
+ * A single-value factory that has already started and has not finished.
+ *
+ * Element injection cannot see a session until it is `active`, but a factory that is already
+ * running still has to be shared — or rejected, when the caller is that factory.
+ *
+ * @param runtime - The application runtime.
+ * @param from - The host the resolution starts from.
+ * @param token - The token to resolve.
+ * @returns The in-flight registration, or `undefined`.
+ */
+export function findInFlightRegistration(
+    runtime: ApplicationRuntime,
+    from: Host,
+    token: TokenLike,
+): { session: SessionRuntime<any>; registration: ProviderRegistration } | undefined {
+    for (const host of chainFrom(from)) {
+        const session = runtime.sessions.get(host)
+        if (session === undefined) {
+            continue
+        }
+        const registration = lastSingleRegistration(session, token)
+        if (registration === undefined || !session.resolving.has(registration)) {
+            continue
+        }
+        return { session, registration }
+    }
+    return undefined
+}
+
+/**
  * A singleton is owned by the first session that registered it.
  *
  * A later registration is ignored at resolution time, not only reported on `errors$`.

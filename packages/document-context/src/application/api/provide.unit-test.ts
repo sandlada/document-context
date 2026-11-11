@@ -142,6 +142,42 @@ describe('provide', () => {
         expect(session.status).toBe('disposed')
     })
 
+    it('[SCOPE #8] 元素目標注入 starting 中的自己以 CIRCULAR_DEPENDENCY 拒絕', async () => {
+        const token = defineToken<string>('public')('app:self-element')
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    token,
+                    async ({ session: current }) => {
+                        await Promise.resolve()
+                        return app.inject(token)(current.host.native())
+                    },
+                    { eager: true },
+                ),
+            ),
+        )(host)
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const outcome = await Promise.race([
+            session.ready.then(
+                () => 'ready',
+                (error: unknown) => error,
+            ),
+            new Promise<string>((resolve) => {
+                timer = setTimeout(() => resolve('timeout'), 300)
+            }),
+        ])
+        if (timer !== undefined) {
+            clearTimeout(timer)
+        }
+
+        expect(outcome).toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
+        expect(session.status).toBe('disposed')
+    })
+
     it('[SCOPE #10] 另一個工廠可以等待已開始的工廠', async () => {
         const a = defineToken<string>('public')('app:started-a')
         const b = defineToken<string>('public')('app:started-b')
