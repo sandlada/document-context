@@ -35,7 +35,16 @@ class StateStreamImpl<S> implements StateStream<S> {
                 subscriber.complete()
                 return undefined
             }
+            const reentered: S[] = []
+            const capture = this.subject.subscribe((value) => {
+                reentered.push(value)
+            })
             subscriber.next(this.snapshot)
+            while (reentered.length > 0) {
+                const value = reentered.shift() as S
+                subscriber.next(value)
+            }
+            capture.unsubscribe()
             const subscription = this.subject.subscribe(subscriber)
             return () => subscription.unsubscribe()
         })

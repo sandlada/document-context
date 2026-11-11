@@ -52,6 +52,24 @@ export function sessionStream(
     return new Observable<Session<any, any> | null>((subscriber) => {
         let current: Session<any, any> | null = null
         let first = true
+        let watching = false
+        const stops: (() => void)[] = []
+        const watchChain = (): void => {
+            for (const stop of stops.splice(0)) {
+                stop()
+            }
+            const host = runtime.ports.host.scope.hostOf(target)
+            if (host === null) {
+                return
+            }
+            for (const candidate of chainFrom(host)) {
+                stops.push(
+                    runtime.ports.host.connectivity.subscribe(candidate, () => {
+                        emit()
+                    }),
+                )
+            }
+        }
         const emit = (): void => {
             const next = sessionAt(runtime, target)
             if (first || next !== current) {
@@ -59,8 +77,22 @@ export function sessionStream(
                 current = next
                 subscriber.next(next)
             }
+            if (!watching) {
+                watching = true
+                try {
+                    watchChain()
+                } finally {
+                    watching = false
+                }
+            }
         }
+        const stopSessions = runtime.onSessionsChanged(emit)
         emit()
-        return runtime.onSessionsChanged(emit)
+        return () => {
+            stopSessions()
+            for (const stop of stops) {
+                stop()
+            }
+        }
     })
 }

@@ -13,6 +13,21 @@ describe('error stream', () => {
         expect(seen).toEqual(['buffered'])
     })
 
+    it('[RX #4] 排空緩衝時重入的錯誤不會遺失', () => {
+        const stream = createErrorStream()
+        stream.push(new DocumentContextError('HOOK_ERROR', 'buffered'))
+
+        const seen: string[] = []
+        stream.observable.subscribe((error) => {
+            seen.push(error.message)
+            if (error.message === 'buffered') {
+                stream.push(new DocumentContextError('HOOK_ERROR', 'reentered'))
+            }
+        })
+
+        expect(seen).toEqual(['buffered', 'reentered'])
+    })
+
     it('[RX #4] 第二個訂閱者只收到新事件', () => {
         const stream = createErrorStream()
         stream.push(new DocumentContextError('HOOK_ERROR', 'buffered'))

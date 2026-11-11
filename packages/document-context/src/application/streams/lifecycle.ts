@@ -35,7 +35,16 @@ class LifecycleStreamImpl implements LifecycleStream {
                 return undefined
             }
             if (this.backed !== null) {
+                const reentered: LifecycleEvent[] = []
+                const capture = this.subject.subscribe((event) => {
+                    reentered.push(event)
+                })
                 subscriber.next(this.backed)
+                while (reentered.length > 0) {
+                    const event = reentered.shift() as LifecycleEvent
+                    subscriber.next(event)
+                }
+                capture.unsubscribe()
             }
             const subscription = this.subject.subscribe(subscriber)
             return () => subscription.unsubscribe()

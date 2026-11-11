@@ -11,6 +11,19 @@ describe('state stream', () => {
         expect(seen).toEqual([0])
     })
 
+    it('[RX #2] 背靠快照的回呼裡再推送不會遺失', () => {
+        const stream = createStateStream({ count: 0 })
+        const seen: number[] = []
+        stream.observable.subscribe((state) => {
+            seen.push(state.count)
+            if (state.count === 0) {
+                stream.push({ count: 1 })
+            }
+        })
+
+        expect(seen).toEqual([0, 1])
+    })
+
     it('[RX #2] 推送同步發生', () => {
         const stream = createStateStream({ count: 0 })
         const seen: number[] = []

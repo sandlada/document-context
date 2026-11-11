@@ -44,6 +44,10 @@ class ErrorStreamImpl implements ErrorStream {
                 const dropped = this.dropped
                 this.buffer = []
                 this.dropped = 0
+                const reentered: DocumentContextError[] = []
+                const capture = this.subject.subscribe((error) => {
+                    reentered.push(error)
+                })
                 for (let index = 0; index < buffered.length; index += 1) {
                     const error = buffered[index] as DocumentContextError
                     const isLast = index === buffered.length - 1
@@ -53,6 +57,11 @@ class ErrorStreamImpl implements ErrorStream {
                             : error,
                     )
                 }
+                while (reentered.length > 0) {
+                    const error = reentered.shift() as DocumentContextError
+                    subscriber.next(error)
+                }
+                capture.unsubscribe()
             }
             const subscription = this.subject.subscribe(subscriber)
             return () => subscription.unsubscribe()

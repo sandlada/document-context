@@ -36,6 +36,39 @@ describe('sessionAt / session$', () => {
         expect(seen).toEqual([session])
     })
 
+    it('[RX #9] 初次推送的回呼裡銷毀會話不會漏掉 null', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({ count: 0 }))(host)
+        await session.ready
+
+        const seen: unknown[] = []
+        app.session$(host).subscribe((value) => {
+            seen.push(value)
+            if (value !== null) {
+                app.dispose(value)
+            }
+        })
+
+        expect(seen).toEqual([session, null])
+        expect(session.status).toBe('disposed')
+    })
+
+    it('[RX #9] 連線變 false 時 session$ 立刻收到 null', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({ count: 0 }))(host)
+        await session.ready
+
+        const seen: unknown[] = []
+        app.session$(host).subscribe((value) => seen.push(value))
+        adapter.setConnected(host, false)
+
+        expect(session.status).toBe('active')
+        expect(app.sessionAt(host)).toBeNull()
+        expect(seen).toEqual([session, null])
+    })
+
     it('[RX #9] session$ 在沒有會話時收到 null', () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()

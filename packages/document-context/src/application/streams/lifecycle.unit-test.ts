@@ -11,6 +11,21 @@ describe('lifecycle stream', () => {
         expect(seen).toEqual([])
     })
 
+    it('[RX #5] 背靠事件的回呼裡再轉移不會遺失', () => {
+        const stream = createLifecycleStream()
+        stream.transition({ type: 'active' }, { type: 'active' })
+
+        const seen: string[] = []
+        stream.observable.subscribe((event) => {
+            seen.push(event.type)
+            if (event.type === 'active') {
+                stream.transition({ type: 'suspended' }, { type: 'suspended' })
+            }
+        })
+
+        expect(seen).toEqual(['active', 'suspended'])
+    })
+
     it('[RX #5] 背靠當前狀態那一筆', () => {
         const stream = createLifecycleStream()
         stream.transition({ type: 'active' }, { type: 'active' })
