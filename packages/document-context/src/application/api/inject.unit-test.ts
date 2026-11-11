@@ -173,6 +173,32 @@ describe('inject', () => {
         expect(errors).toEqual([])
     })
 
+    it('[RX #10] 退訂 inject$ 使串流 complete 且不送錯誤', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({}))(host)
+        await session.ready
+
+        const errors: string[] = []
+        session.errors$.subscribe((error) => errors.push(error.code))
+
+        let completed = false
+        let failed = false
+        const subscription = app.inject$(missingToken)(host).subscribe({
+            error: () => {
+                failed = true
+            },
+            complete: () => {
+                completed = true
+            },
+        })
+        subscription.unsubscribe()
+
+        expect(completed).toBe(true)
+        expect(failed).toBe(false)
+        expect(errors).toEqual([])
+    })
+
     it('[API #11] inject$ 送出一筆後 complete', async () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()

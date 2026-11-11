@@ -15,6 +15,7 @@ import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
 import { dispatchRequest, locateSingle, resolveProviderValue } from '../resolver'
+import { completeOnUnsubscribe } from './complete-on-unsubscribe'
 
 /** Options of a single-value injection. */
 export interface InjectOptions {
@@ -193,19 +194,22 @@ export function injectToken$<T, TTarget = unknown>(
     target: LateTarget<TTarget>,
 ): Observable<T> {
     return new Observable<T>((subscriber) => {
+        const gate = completeOnUnsubscribe(subscriber)
         const injection = beginInjection(runtime, token, options, target)
         injection.promise.then(
             (value) => {
-                if (subscriber.closed) {
+                if (gate.isFinished() || subscriber.closed) {
                     return
                 }
+                gate.markFinished()
                 subscriber.next(value as T)
                 subscriber.complete()
             },
             (error: unknown) => {
-                if (subscriber.closed) {
+                if (gate.isFinished() || subscriber.closed) {
                     return
                 }
+                gate.markFinished()
                 subscriber.error(
                     error instanceof DocumentContextError
                         ? error
@@ -214,6 +218,7 @@ export function injectToken$<T, TTarget = unknown>(
             },
         )
         return () => {
+            gate.markFinished()
             injection.cancel()
         }
     })
