@@ -64,6 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `onMount` or an eager factory that throws a non-`Error` rejects `ready` with that thrown value. `HOOK_ERROR` stays reserved for the other hooks.
 - A later single-value `provide` of the same token replaces earlier single-value registrations in that blueprint. The overridden factory does not run, including when it was `eager`.
 - A pending element injection follows the element when it moves. Disposing the session it left no longer rejects the wait; disposing the session that now contains the element does.
+- `onSuspend` and `onResume` wait for a returned promise before the next hook and before the status change. A rejection is `HOOK_ERROR` and the transition still completes. Synchronous hooks still change status immediately.
 
 ### Changed
 

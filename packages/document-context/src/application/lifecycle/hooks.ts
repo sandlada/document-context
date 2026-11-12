@@ -31,34 +31,59 @@ export async function runHooks(session: SessionRuntime<any>, type: HookType): Pr
 }
 
 /**
- * Run every hook of a type in FIFO order, without awaiting.
+ * Run every hook of a type in FIFO order.
  *
- * Used on the resuscitation path, where the session is already initialized and the transition must
- * happen synchronously. Promises returned by the hooks are collected on the session.
+ * Synchronous hooks finish before this returns. A returned promise settles before the next hook
+ * starts. Its resolved value is not a cleanup. A rejection is reported as `HOOK_ERROR` and the
+ * remaining hooks still run. `onMount` does not use this path: a mount failure rejects `ready`.
  *
  * @param session - The session.
  * @param type - The hook type.
+ * @returns A promise when a hook returned one. `undefined` when every hook has already finished.
  */
-export function runHooksSync(session: SessionRuntime<any>, type: HookType): void {
-    for (const hook of session.blueprint.hooks) {
-        if (hook.type !== type) {
-            continue
-        }
-        try {
-            const result = hook.hook(session)
+export function settleHooks(
+    session: SessionRuntime<any>,
+    type: HookType,
+): Promise<void> | undefined {
+    const hooks = session.blueprint.hooks.filter((hook) => hook.type === type)
+    const runFrom = (index: number): Promise<void> | undefined => {
+        for (let cursor = index; cursor < hooks.length; cursor += 1) {
+            const hook = hooks[cursor]
+            if (hook === undefined) {
+                continue
+            }
+            let result: ReturnType<HookFn>
+            try {
+                result = hook.hook(session)
+            } catch (error) {
+                session.reportError(
+                    new DocumentContextError('HOOK_ERROR', 'Hook failed.', {
+                        details: { cause: error },
+                    }),
+                )
+                continue
+            }
             if (typeof result === 'function') {
                 session.cleanups.push(result)
-            } else if (result instanceof Promise) {
-                session.pendingCleanups.push(reportRejectedHook(session, result, 'Hook failed.'))
+                continue
             }
-        } catch (error) {
-            session.reportError(
-                new DocumentContextError('HOOK_ERROR', 'Hook failed.', {
-                    details: { cause: error },
-                }),
-            )
+            if (result instanceof Promise) {
+                return result.then(
+                    () => runFrom(cursor + 1) ?? undefined,
+                    (error: unknown) => {
+                        session.reportError(
+                            new DocumentContextError('HOOK_ERROR', 'Hook failed.', {
+                                details: { cause: error },
+                            }),
+                        )
+                        return runFrom(cursor + 1) ?? undefined
+                    },
+                )
+            }
         }
+        return undefined
     }
+    return runFrom(0)
 }
 
 /**

@@ -412,4 +412,108 @@ describe('resume', () => {
         ])
         expect(session.status).toBe('active')
     })
+
+    it('[LC #8] onSuspend 的 Promise 落定後才跑下一個鉤子並進入 suspended', async () => {
+        const { app, adapter } = createTestApplication()
+        const order: string[] = []
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onSuspend(() => {
+                    order.push('first')
+                    return gate.then(() => {
+                        order.push('first-done')
+                    })
+                }),
+                onSuspend(() => {
+                    order.push('second')
+                }),
+            ),
+            { token: 'app:suspend-promise' },
+        )(host)
+        await session.ready
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+
+        expect(order).toEqual(['first'])
+        expect(session.status).toBe('active')
+
+        release()
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+
+        expect(order).toEqual(['first', 'first-done', 'second'])
+        expect(session.status).toBe('suspended')
+    })
+
+    it('[LC #8] onResume 的 Promise 落定後才進入 active', async () => {
+        const { app, adapter } = createTestApplication()
+        const order: string[] = []
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onResume(() => {
+                order.push('resume')
+                return gate.then(() => {
+                    order.push('resume-done')
+                })
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:resume-promise' })(first)
+        await session.ready
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('suspended')
+
+        const second = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:resume-promise' })(second)
+
+        expect(resumed).toBe(session)
+        expect(order).toEqual(['resume'])
+        expect(session.status).toBe('suspended')
+
+        release()
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+
+        expect(order).toEqual(['resume', 'resume-done'])
+        expect(session.status).toBe('active')
+    })
+
+    it('[LC #9] onSuspend 的 Promise 拒絕後仍進入 suspended', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onSuspend(() => Promise.reject(new Error('suspend failed'))),
+                onSuspend(() => undefined),
+            ),
+            { token: 'app:suspend-reject' },
+        )(host)
+        await session.ready
+
+        const codes: string[] = []
+        session.errors$.subscribe((error) => codes.push(error.code))
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+
+        expect(codes).toContain('HOOK_ERROR')
+        expect(session.status).toBe('suspended')
+    })
 })

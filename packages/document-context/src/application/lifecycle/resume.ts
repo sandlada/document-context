@@ -10,7 +10,7 @@ import type { Host } from '../../domain/model/session'
 import type { ApplicationRuntime } from '../context'
 import type { SessionRuntime } from '../session'
 import { watchConnectivity } from './disconnect'
-import { runHooksSync } from './hooks'
+import { settleHooks } from './hooks'
 
 /**
  * Keep a keyed session in the suspension table and arm its TTL.
@@ -50,20 +50,40 @@ export function suspendSession(runtime: ApplicationRuntime, session: SessionRunt
         session.dispose('disconnect')
         return
     }
+    if (suspending.has(session)) {
+        return
+    }
     const token = session.token
     session.detachContextRequest()
     runtime.ports.host.scope.undeclare(session.adapterHost)
-    if (session.status === 'active') {
-        runHooksSync(session, 'suspend')
+    const finish = (): void => {
+        suspending.delete(session)
+        if (session.isDisposed || session.status === 'suspended' || session.status === 'disposed') {
+            return
+        }
+        session.markSuspended()
+        if (token !== null) {
+            runtime.keyed.set(token, session)
+            runtime.suspendedOrder.push(token)
+        }
+        armSuspensionTimer(runtime, session)
+        runtime.notifySessionsChanged()
     }
-    session.markSuspended()
-    if (token !== null) {
-        runtime.keyed.set(token, session)
-        runtime.suspendedOrder.push(token)
+    if (session.status !== 'active') {
+        finish()
+        return
     }
-    armSuspensionTimer(runtime, session)
-    runtime.notifySessionsChanged()
+    const pending = settleHooks(session, 'suspend')
+    if (pending === undefined) {
+        finish()
+        return
+    }
+    suspending.add(session)
+    void pending.then(finish, finish)
 }
+
+/** Sessions whose `onSuspend` promises have not settled yet. */
+const suspending = new WeakSet<SessionRuntime<any>>()
 
 /**
  * Resume a suspended session on a new host.
@@ -114,8 +134,22 @@ export function resumeSession(
             armSuspensionTimer(runtime, session)
             return
         }
-        runHooksSync(session, 'resume')
-        session.activate(true)
+        const resumePending = settleHooks(session, 'resume')
+        const activate = (): void => {
+            if (session.isDisposed) {
+                return
+            }
+            if (!runtime.ports.host.connectivity.isConnected(session.adapterHost)) {
+                armSuspensionTimer(runtime, session)
+                return
+            }
+            session.activate(true)
+        }
+        if (resumePending === undefined) {
+            activate()
+            return
+        }
+        void resumePending.then(activate, activate)
     }
     if (pending === undefined) {
         finish()
