@@ -1,8 +1,9 @@
 /**
  * `provide` — the blueprint operator that registers a dependency.
  *
- * The operator is pure: it appends a registration to the blueprint and returns a new blueprint. It
- * never runs the factory and never touches the DOM.
+ * The operator is pure: it returns a new blueprint and never runs the factory or touches the DOM.
+ * A later single-value registration of the same token replaces earlier single-value registrations.
+ * `multi: true` registrations accumulate.
  */
 
 import type {
@@ -89,9 +90,14 @@ export function provide<T>(
     }
     return (blueprint: Blueprint<any>): Blueprint<any> => {
         const ordered: ProviderRegistration = { ...registration, order: blueprint.providers.length }
+        const kept = registration.multi
+            ? blueprint.providers
+            : blueprint.providers.filter(
+                  (existing) => existing.multi || existing.token !== registration.token,
+              )
         return Object.freeze({
             state: blueprint.state,
-            providers: Object.freeze([...blueprint.providers, ordered]),
+            providers: Object.freeze([...kept, ordered]),
             hooks: blueprint.hooks,
         })
     }

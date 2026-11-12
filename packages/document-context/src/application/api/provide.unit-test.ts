@@ -278,4 +278,34 @@ describe('provide', () => {
         const operator = provide(httpToken, () => ({ get: () => 'ok' }))
         expect(typeof operator).toBe('function')
     })
+
+    it('同一藍圖裡後註冊的單值覆蓋先註冊的 eager 工廠', async () => {
+        const token = defineToken<string>('public')('app:override')
+        const calls: string[] = []
+        const blueprint = pipe(
+            createContext({}),
+            provide(
+                token,
+                () => {
+                    calls.push('first')
+                    return 'first'
+                },
+                { eager: true },
+            ),
+            provide(
+                token,
+                () => {
+                    calls.push('second')
+                    return 'second'
+                },
+                { eager: true },
+            ),
+        )
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(blueprint)(adapter.createHost())
+        await session.ready
+
+        await expect(app.inject(token)(session)).resolves.toBe('second')
+        expect(calls).toEqual(['second'])
+    })
 })
