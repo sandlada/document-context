@@ -58,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A pending element `inject` rejects with `DISPOSED_SESSION` when the session that owns that element is disposed, even if the element stays connected.
 - `update` accepts the next snapshot directly, as well as a function. Keys omitted from that snapshot are removed.
 - A `uses` dependency provided by an ancestor that is still `starting` waits for that factory. It is not rejected as `UNKNOWN_SERVICE`.
+- Overlapping `transient` or `prototype` injections share one in-flight `uses` resolution, so each declared dependency is still created once per registration.
 
 ### Changed
 

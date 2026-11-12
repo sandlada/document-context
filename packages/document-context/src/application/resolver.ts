@@ -511,6 +511,23 @@ async function produceProviderValue(
     return slot.promise
 }
 
+async function resolveDeclaredUses(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): Promise<ReadonlyMap<TokenLike, unknown>> {
+    try {
+        const resolved = new Map<TokenLike, unknown>()
+        for (const used of registration.uses) {
+            resolved.set(used, await resolveUsedValue(runtime, session, used))
+        }
+        session.usedValues.set(registration, resolved)
+        return resolved
+    } finally {
+        session.pendingUses.delete(registration)
+    }
+}
+
 async function runFactory(
     runtime: ApplicationRuntime,
     session: SessionRuntime<any>,
@@ -533,18 +550,18 @@ async function runFactory(
     session.resolvingDepth.set(registration, (session.resolvingDepth.get(registration) ?? 0) + 1)
     try {
         const cached = session.usedValues.get(registration)
-        const resolved = new Map<TokenLike, unknown>()
-        if (cached === undefined) {
-            for (const used of registration.uses) {
-                resolved.set(used, await resolveUsedValue(runtime, session, used))
-            }
-            if (registration.uses.length > 0) {
-                session.usedValues.set(registration, resolved)
-            }
+        let resolved: Map<TokenLike, unknown>
+        if (cached !== undefined) {
+            resolved = new Map(cached)
+        } else if (registration.uses.length === 0) {
+            resolved = new Map()
         } else {
-            for (const [used, value] of cached) {
-                resolved.set(used, value)
+            let inflight = session.pendingUses.get(registration)
+            if (inflight === undefined) {
+                inflight = resolveDeclaredUses(runtime, session, registration)
+                session.pendingUses.set(registration, inflight)
             }
+            resolved = new Map(await inflight)
         }
         const tools: FactoryTools = {
             session,

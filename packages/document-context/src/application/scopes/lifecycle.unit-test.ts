@@ -238,6 +238,44 @@ describe('injection lifecycle', () => {
         expect(depCalls).toBe(2)
     })
 
+    it('[SCOPE #9] 重疊的 transient 注入只建立一次 uses', async () => {
+        const { app, adapter } = createTestApplication()
+        const outerToken = defineToken<{ dep: { id: number } }>('public')('app:outer-overlap')
+        let depCalls = 0
+        let outerCalls = 0
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    transientToken,
+                    () => {
+                        depCalls += 1
+                        return { id: depCalls }
+                    },
+                    { lifecycle: 'transient' },
+                ),
+                provide(
+                    outerToken,
+                    ({ use }) => {
+                        outerCalls += 1
+                        return { dep: use(transientToken) }
+                    },
+                    { lifecycle: 'transient', uses: [transientToken] },
+                ),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        const first = app.inject(outerToken)(session)
+        const second = app.inject(outerToken)(session)
+        const [left, right] = await Promise.all([first, second])
+
+        expect(outerCalls).toBe(2)
+        expect(depCalls).toBe(1)
+        expect(left).not.toBe(right)
+        expect(left.dep).toBe(right.dep)
+    })
+
     it('[SCOPE #9] 後註冊的 multi singleton 不進入 injectAll', async () => {
         const { app, adapter } = createTestApplication()
         const plugin = defineToken<string>('public')('app:plugin-singleton')

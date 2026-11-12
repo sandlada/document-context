@@ -57,6 +57,12 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
      * Transient factories run again on every injection, but their declared dependencies do not.
      */
     readonly usedValues = new Map<ProviderRegistration, ReadonlyMap<TokenLike, unknown>>()
+    /**
+     * In-flight `uses` resolution for a registration.
+     *
+     * Published before the first await so an overlapping injection shares one creation.
+     */
+    readonly pendingUses = new Map<ProviderRegistration, Promise<ReadonlyMap<TokenLike, unknown>>>()
     /** Cleanup callbacks returned by `onMount` hooks. */
     readonly cleanups: (() => void)[] = []
     /** Promises returned by disposal hooks. */
