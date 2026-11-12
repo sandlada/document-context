@@ -121,6 +121,59 @@ describe('inject', () => {
         await expect(pending).resolves.toBe('late')
     })
 
+    it('[ERR #8] 元素搬離原會話後，舊會話銷毀不再結束等待', async () => {
+        const { app, adapter } = createTestApplication()
+        const previous = adapter.createHost()
+        const next = adapter.createHost()
+        const leaf = adapter.createHost()
+        leaf.setParent(previous)
+        const owner = app.mount(createContext({}))(previous)
+        await owner.ready
+        const provider = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+        )(next)
+        await provider.ready
+
+        const pending = app.inject(themeToken)(leaf)
+        leaf.setParent(next)
+        app.dispose(owner)
+        await adapter.clock.flushMicrotasks()
+
+        await expect(pending).resolves.toBe('dark')
+    })
+
+    it('[ERR #8] 元素搬到新會話後，由新會話的銷毀結束等待', async () => {
+        const { app, adapter } = createTestApplication()
+        const previous = adapter.createHost()
+        const next = adapter.createHost()
+        const leaf = adapter.createHost()
+        leaf.setParent(previous)
+        const owner = app.mount(createContext({}))(previous)
+        await owner.ready
+        const moved = app.mount(createContext({}))(next)
+        await moved.ready
+
+        let outcome: unknown = 'pending'
+        const pending = app.inject(missingToken)(leaf).then(
+            () => {
+                outcome = 'fulfilled'
+            },
+            (error: unknown) => {
+                outcome = error
+            },
+        )
+        leaf.setParent(next)
+        app.dispose(owner)
+        await adapter.clock.flushMicrotasks()
+        await Promise.resolve()
+
+        expect(outcome).toBe('pending')
+
+        app.dispose(moved)
+        await pending
+        expect(outcome).toMatchObject({ code: 'DISPOSED_SESSION' })
+    })
+
     it('[ERR #8] 元素 pending 在所屬會話銷毀後以 DISPOSED_SESSION 結束', async () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()

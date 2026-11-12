@@ -96,13 +96,31 @@ export function createPendingRequest(
         unsubscribe?.()
         unsubscribe = null
         stopStructure()
-        detachOrigin?.()
-        detachOrigin = null
+        stopSessions()
+        detachOwner()
         runtime.pending.delete(request)
     }
+    let watchedOwner: SessionRuntime<any> | null = null
+    const detachOwner = (): void => {
+        detachOrigin?.()
+        detachOrigin = null
+        watchedOwner = null
+    }
     const watchOwnerAbort = (owner: SessionRuntime<any>): void => {
+        detachOwner()
+        watchedOwner = owner
         const onOwnerDisposed = (): void => {
             if (request.settled) {
+                return
+            }
+            // The element may have moved before this session aborted. The wait belongs to the
+            // session that currently contains the target, not the one it started under.
+            if (
+                options.origin === null &&
+                !chainFrom(options.host).includes(owner.adapterHost)
+            ) {
+                bindNearestOwner()
+                schedulePendingRetry(runtime)
                 return
             }
             const reason = owner.abortSignal.reason
@@ -124,13 +142,30 @@ export function createPendingRequest(
             }
         }
     }
+    const bindNearestOwner = (): void => {
+        if (options.origin !== null || request.settled) {
+            return
+        }
+        const owner = nearestSession(runtime, options.host)
+        if (owner === watchedOwner) {
+            return
+        }
+        if (owner === null) {
+            detachOwner()
+            return
+        }
+        watchOwnerAbort(owner)
+    }
+    const stopSessions =
+        options.origin === null
+            ? runtime.onSessionsChanged(() => {
+                  bindNearestOwner()
+              })
+            : () => undefined
     if (options.origin !== null) {
         watchOwnerAbort(options.origin)
     } else {
-        const owner = nearestSession(runtime, options.host)
-        if (owner !== null) {
-            watchOwnerAbort(owner)
-        }
+        bindNearestOwner()
     }
     const structureStops: (() => void)[] = []
     const stopStructure = (): void => {
@@ -150,6 +185,7 @@ export function createPendingRequest(
                         return
                     }
                     watchStructure()
+                    bindNearestOwner()
                     schedulePendingRetry(runtime)
                 }),
             )

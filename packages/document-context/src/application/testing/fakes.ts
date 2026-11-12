@@ -274,6 +274,7 @@ export function createFakeHostAdapter(): FakeHostAdapter {
     const clock = createFakeClock()
     const states = new Map<Host, boolean>()
     const subscriptions = new Map<Host, Set<(connected: boolean, owner?: unknown) => void>>()
+    const structureListeners = new Map<Host, Set<() => void>>()
     const declarations = new Map<Host, ProviderDeclaration[]>()
     const handlers = new Map<Host, ((detail: ContextRequestDetail) => void)[]>()
     const providerListeners = new Set<() => void>()
@@ -295,8 +296,13 @@ export function createFakeHostAdapter(): FakeHostAdapter {
                 set.delete(listener)
             }
         },
-        subscribeStructure(_host: Host, _listener: () => void): () => void {
-            return () => undefined
+        subscribeStructure(host: Host, listener: () => void): () => void {
+            const set = structureListeners.get(host) ?? new Set<() => void>()
+            set.add(listener)
+            structureListeners.set(host, set)
+            return () => {
+                set.delete(listener)
+            }
         },
     }
 
@@ -431,6 +437,13 @@ export function createFakeHostAdapter(): FakeHostAdapter {
         },
         createHost(kind: 'element' | 'server' = 'element'): FakeHost {
             const host = createFakeHost(kind)
+            const move = host.setParent.bind(host)
+            host.setParent = (next: Host | null): void => {
+                move(next)
+                for (const listener of [...(structureListeners.get(host) ?? [])]) {
+                    listener()
+                }
+            }
             states.set(host, true)
             return host
         },
