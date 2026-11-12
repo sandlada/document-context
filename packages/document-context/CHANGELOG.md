@@ -67,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `onSuspend` and `onResume` wait for a returned promise before the next hook and before the status change. A rejection is `HOOK_ERROR` and the transition still completes. Synchronous hooks still change status immediately.
 - `inject$` and `injectAll$` forward a factory failure unchanged. A thrown string or `Error` is no longer rewritten as `UNKNOWN_SERVICE`.
 - An element injection that was still waiting does the same when the factory later throws. The rejection stays the thrown value.
+- A keyed token can be mounted again while `onSuspend` promises are still running. That mount resumes the same session after those promises settle, instead of raising `KEYED_CONFLICT`.
 
 ### Changed
 

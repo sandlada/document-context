@@ -516,4 +516,50 @@ describe('resume', () => {
         expect(codes).toContain('HOOK_ERROR')
         expect(session.status).toBe('suspended')
     })
+
+    it('[LC #5] onSuspend 的 Promise 尚未落定時，同 token 掛到新宿主會恢復', async () => {
+        const { app, adapter } = createTestApplication()
+        const order: string[] = []
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const blueprint = pipe(
+            createContext({ count: 1 }),
+            onSuspend(() => {
+                order.push('suspend')
+                return gate.then(() => {
+                    order.push('suspend-done')
+                })
+            }),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:overlap' })(first)
+        await session.ready
+        app.update({ count: 2 })(session)
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('active')
+        expect(order).toEqual(['suspend'])
+
+        const second = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:overlap' })(second)
+
+        expect(resumed).toBe(session)
+        expect(order).toEqual(['suspend'])
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(2)
+
+        release()
+        for (let step = 0; step < 8; step += 1) {
+            await Promise.resolve()
+        }
+
+        expect(order).toEqual(['suspend', 'suspend-done', 'resume'])
+        expect(session.status).toBe('active')
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(2)
+    })
 })

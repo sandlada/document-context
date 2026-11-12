@@ -79,11 +79,69 @@ export function suspendSession(runtime: ApplicationRuntime, session: SessionRunt
         return
     }
     suspending.add(session)
-    void pending.then(finish, finish)
+    const gate: SuspendGate = { promise: pending, resumed: false }
+    suspendGates.set(session, gate)
+    void pending.then(() => {
+        suspendGates.delete(session)
+        if (gate.resumed) {
+            suspending.delete(session)
+            return
+        }
+        finish()
+    }, () => {
+        suspendGates.delete(session)
+        if (gate.resumed) {
+            suspending.delete(session)
+            return
+        }
+        finish()
+    })
 }
 
 /** Sessions whose `onSuspend` promises have not settled yet. */
 const suspending = new WeakSet<SessionRuntime<any>>()
+
+interface SuspendGate {
+    /** Resolves when the `onSuspend` promises have settled. */
+    readonly promise: Promise<void>
+    /** Set when a resume takes over before the suspend transition finishes. */
+    resumed: boolean
+}
+
+/** In-flight suspend transitions that a keyed resume may still claim. */
+const suspendGates = new WeakMap<SessionRuntime<any>, SuspendGate>()
+
+/**
+ * Whether a confirmed disconnect is still waiting for `onSuspend` promises.
+ *
+ * The session stays `active` until those promises settle, but it is no longer a connected mount.
+ * A new mount of the same token resumes it instead of raising `KEYED_CONFLICT`.
+ *
+ * @param session - The session to test.
+ * @returns `true` when the suspend hooks are still running.
+ */
+export function isSuspending(session: SessionRuntime<any>): boolean {
+    return suspending.has(session)
+}
+
+/**
+ * The session whose `onSuspend` promises are still running for a token.
+ *
+ * @param runtime - The application runtime.
+ * @param token - The keyed identity.
+ * @returns The session, or `undefined`.
+ */
+export function findSuspendingSession(
+    runtime: ApplicationRuntime,
+    token: string,
+): SessionRuntime<any> | undefined {
+    for (const session of runtime.sessions.values()) {
+        if (session.token === token && suspending.has(session)) {
+            return session
+        }
+    }
+    return undefined
+}
 
 /**
  * Resume a suspended session on a new host.
@@ -118,6 +176,27 @@ export function resumeSession(
     }
     session.setSuspensionTimer(() => undefined)
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
+    const gate = suspendGates.get(session)
+    if (gate !== undefined) {
+        gate.resumed = true
+    }
+    const continueResume = (): void => {
+        resumeAfterRebind(runtime, session)
+    }
+    if (gate !== undefined) {
+        void gate.promise.then(continueResume, continueResume)
+        return
+    }
+    continueResume()
+}
+
+/**
+ * Run the resume hooks after the session is bound to its new host.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session being resumed.
+ */
+function resumeAfterRebind(runtime: ApplicationRuntime, session: SessionRuntime<any>): void {
     let pending: Promise<void> | undefined
     try {
         pending = session.runMountHooksSync()

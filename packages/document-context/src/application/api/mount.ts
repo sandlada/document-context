@@ -14,7 +14,13 @@ import { SessionRuntime } from '../session'
 import { assertUsesResolvable, detectUsesCycle, resolveProviderValue } from '../resolver'
 import { claimSingleton } from '../scopes/lifecycle'
 import { retryPendingRequests, schedulePendingRetry } from '../pending'
-import { suspendSession, findSuspendedSession, resumeSession } from '../lifecycle/resume'
+import {
+    suspendSession,
+    findSuspendedSession,
+    findSuspendingSession,
+    isSuspending,
+    resumeSession,
+} from '../lifecycle/resume'
 import { watchConnectivity } from '../lifecycle/disconnect'
 
 /** Options of a single mount. */
@@ -114,6 +120,9 @@ export function mountSession<S, TTarget = unknown>(
             if (session === occupying) {
                 continue
             }
+            if (isSuspending(session)) {
+                continue
+            }
             if (
                 session.token === token &&
                 (session.status === 'active' || session.status === 'starting')
@@ -136,6 +145,11 @@ export function mountSession<S, TTarget = unknown>(
     }
 
     if (token !== null) {
+        const suspendingSession = findSuspendingSession(runtime, token)
+        if (suspendingSession !== undefined) {
+            resumeSession(runtime, suspendingSession, host)
+            return suspendingSession as SessionRuntime<S>
+        }
         const suspended = findSuspendedSession(runtime, token)
         if (suspended !== undefined && suspended.status === 'suspended') {
             resumeSession(runtime, suspended, host)
