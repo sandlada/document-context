@@ -100,13 +100,12 @@ export function createPendingRequest(
         detachOrigin = null
         runtime.pending.delete(request)
     }
-    if (options.origin !== null) {
-        const origin = options.origin
-        const onOriginDisposed = (): void => {
+    const watchOwnerAbort = (owner: SessionRuntime<any>): void => {
+        const onOwnerDisposed = (): void => {
             if (request.settled) {
                 return
             }
-            const reason = origin.abortSignal.reason
+            const reason = owner.abortSignal.reason
             request.reject(
                 reason instanceof DocumentContextError
                     ? reason
@@ -116,13 +115,21 @@ export function createPendingRequest(
                       ),
             )
         }
-        if (origin.abortSignal.aborted) {
-            onOriginDisposed()
+        if (owner.abortSignal.aborted) {
+            onOwnerDisposed()
         } else {
-            origin.abortSignal.addEventListener('abort', onOriginDisposed, { once: true })
+            owner.abortSignal.addEventListener('abort', onOwnerDisposed, { once: true })
             detachOrigin = () => {
-                origin.abortSignal.removeEventListener('abort', onOriginDisposed)
+                owner.abortSignal.removeEventListener('abort', onOwnerDisposed)
             }
+        }
+    }
+    if (options.origin !== null) {
+        watchOwnerAbort(options.origin)
+    } else {
+        const owner = nearestSession(runtime, options.host)
+        if (owner !== null) {
+            watchOwnerAbort(owner)
         }
     }
     const structureStops: (() => void)[] = []
@@ -248,6 +255,19 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
             )
         }
     }
+}
+
+function nearestSession(
+    runtime: ApplicationRuntime,
+    host: Host,
+): SessionRuntime<any> | null {
+    for (const candidate of chainFrom(host)) {
+        const session = runtime.sessions.get(candidate)
+        if (session !== undefined && !session.isDisposed) {
+            return session
+        }
+    }
+    return null
 }
 
 function toError(error: unknown): DocumentContextError {
