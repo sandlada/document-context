@@ -60,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A `uses` dependency provided by an ancestor that is still `starting` waits for that factory. It is not rejected as `UNKNOWN_SERVICE`.
 - Overlapping `transient` or `prototype` injections share one in-flight `uses` resolution, so each declared dependency is still created once per registration.
 - Aborting `MountOptions.signal` while a session is still `starting` stops initialization. `onMount` and eager factories do not run after the session has been disposed.
+- Skipped `onMount` hooks replayed on resume stay in registration order. The next hook waits until the previous hook's promise settles. `onResume` runs after that.
 
 ### Changed
 

@@ -365,4 +365,51 @@ describe('resume', () => {
         expect(own.status).toBe('suspended')
         expect(theirs.status).toBe('suspended')
     })
+
+    it('[LC #8] 恢復時補跑的 onMount 依 FIFO 等待 Promise', async () => {
+        const { app, adapter } = createTestApplication()
+        const order: string[] = []
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount(() => {
+                order.push('first-start')
+                return Promise.resolve().then(() => {
+                    order.push('first-end')
+                })
+            }),
+            onMount(() => {
+                order.push('second-start')
+                return Promise.resolve().then(() => {
+                    order.push('second-end')
+                })
+            }),
+            onResume(() => {
+                order.push('resume')
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:mount-fifo' })(first)
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+
+        expect(session.status).toBe('suspended')
+        expect(order).toEqual([])
+
+        const second = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:mount-fifo' })(second)
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+
+        expect(resumed).toBe(session)
+        expect(order).toEqual([
+            'first-start',
+            'first-end',
+            'second-start',
+            'second-end',
+            'resume',
+        ])
+        expect(session.status).toBe('active')
+    })
 })

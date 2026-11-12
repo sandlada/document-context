@@ -237,32 +237,35 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
     }
 
     /**
-     * Run the `onMount` hooks synchronously, at most once.
+     * Run skipped `onMount` hooks at most once.
      *
-     * Used on the resuscitation path when initialization skipped `onMount`. Failures propagate to
-     * the caller so the session can be disposed without entering `active`.
+     * Synchronous hooks finish before this returns. A returned promise is awaited before the next
+     * hook starts, so the hooks stay in registration order. The resolved value is not a cleanup.
      *
-     * @returns Promises returned by the hooks. They are not cleanups. The caller decides when the
-     * resume may continue.
+     * @returns A promise when a hook returned one. `undefined` when every hook has already
+     * finished.
+     * @throws The synchronous error from a hook. The caller disposes the session without `active`.
      */
-    runMountHooksSync(): Promise<unknown>[] {
+    runMountHooksSync(): Promise<void> | undefined {
         if (this.mountHooksRan) {
-            return []
+            return undefined
         }
         this.mountHooksRan = true
-        const pending: Promise<unknown>[] = []
-        for (const hook of this.blueprint.hooks) {
-            if (hook.type !== 'mount') {
-                continue
+        const hooks = this.blueprint.hooks.filter((hook) => hook.type === 'mount')
+        const runFrom = (index: number): Promise<void> | undefined => {
+            for (let cursor = index; cursor < hooks.length; cursor += 1) {
+                const result = hooks[cursor]?.hook(this)
+                if (typeof result === 'function') {
+                    this.cleanups.push(result)
+                    continue
+                }
+                if (result instanceof Promise) {
+                    return result.then(() => runFrom(cursor + 1))
+                }
             }
-            const result = hook.hook(this)
-            if (typeof result === 'function') {
-                this.cleanups.push(result)
-            } else if (result instanceof Promise) {
-                pending.push(result)
-            }
+            return undefined
         }
-        return pending
+        return runFrom(0)
     }
 
     /** Whether the `onMount` hooks already ran. */

@@ -98,7 +98,7 @@ export function resumeSession(
     }
     session.setSuspensionTimer(() => undefined)
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
-    let pending: Promise<unknown>[]
+    let pending: Promise<void> | undefined
     try {
         pending = session.runMountHooksSync()
     } catch (error) {
@@ -117,11 +117,11 @@ export function resumeSession(
         runHooksSync(session, 'resume')
         session.activate(true)
     }
-    if (pending.length === 0) {
+    if (pending === undefined) {
         finish()
         return
     }
-    void Promise.all(pending).then(finish, (error: unknown) => {
+    void pending.then(finish, (error: unknown) => {
         session.fail(error)
         session.dispose('explicit')
     })
