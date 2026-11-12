@@ -319,13 +319,7 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
      * @param error - The reason the initialization failed.
      */
     fail(error: unknown): void {
-        const failure =
-            error instanceof Error
-                ? error
-                : new DocumentContextError('HOOK_ERROR', 'Initialization failed.', {
-                      details: { cause: error },
-                  })
-        this.failReady?.(failure)
+        this.failReady?.(error)
         this.failReady = null
         this.settleReady = null
     }

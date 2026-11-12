@@ -116,6 +116,21 @@ describe('hook execution', () => {
         expect(session.status).toBe('disposed')
     })
 
+    it('[LC #9] onMount 拋出的非 Error 原樣拒絕 ready', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onMount(() => {
+                    throw 'mount failed'
+                }),
+            ),
+        )(adapter.createHost())
+
+        await expect(session.ready).rejects.toBe('mount failed')
+        expect(session.status).toBe('disposed')
+    })
+
     it('[LC #9] onSuspend 失敗只進 errors$ 且其餘鉤子繼續', async () => {
         const order: string[] = []
         const blueprint = pipe(
