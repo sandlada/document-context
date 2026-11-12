@@ -40,6 +40,50 @@ describe('provide', () => {
         expect(profile).toEqual({ name: 'ok' })
     })
 
+    it('[SCOPE #7] 祖先還在 starting 時 uses 仍會等到它的工廠', async () => {
+        const parentToken = defineToken<string>('public')('app:parent-value')
+        const childToken = defineToken<string>('public')('app:child-value')
+        const { app, adapter } = createTestApplication()
+        const outer = adapter.createHost()
+        const inner = adapter.createHost()
+        inner.setParent(outer)
+
+        let release: ((value: string) => void) | undefined
+        const parent = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    parentToken,
+                    () => new Promise<string>((resolve) => {
+                        release = resolve
+                    }),
+                    { eager: true },
+                ),
+            ),
+        )(outer)
+        const child = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    childToken,
+                    ({ use }) => use(parentToken),
+                    { uses: [parentToken], eager: true },
+                ),
+            ),
+        )(inner)
+
+        const ready = child.ready.then(
+            () => 'ready',
+            (error: unknown) => error,
+        )
+        await Promise.resolve()
+        release?.('from-parent')
+
+        await expect(ready).resolves.toBe('ready')
+        await expect(app.inject(childToken)(child)).resolves.toBe('from-parent')
+        await parent.ready
+    })
+
     it('[SCOPE #7] use() 同步取得已建立的值', async () => {
         const blueprint = pipe(
             createContext({}),

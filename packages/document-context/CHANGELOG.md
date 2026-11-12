@@ -57,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `suspensionTtlMs: 0` disposes a keyed session on a confirmed disconnect, with reason `disconnect`, and does not enter `suspended` or run `onSuspend`. A pinned session still suspends.
 - A pending element `inject` rejects with `DISPOSED_SESSION` when the session that owns that element is disposed, even if the element stays connected.
 - `update` accepts the next snapshot directly, as well as a function. Keys omitted from that snapshot are removed.
+- A `uses` dependency provided by an ancestor that is still `starting` waits for that factory. It is not rejected as `UNKNOWN_SERVICE`.
 
 ### Changed
 

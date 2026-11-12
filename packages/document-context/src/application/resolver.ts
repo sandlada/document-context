@@ -581,8 +581,39 @@ async function runFactory(
     }
 }
 
+function nearestStartingProvider(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    token: TokenLike,
+): { session: SessionRuntime<any>; registration: ProviderRegistration } | undefined {
+    const scope = runtime.ports.host.scope
+    for (const host of chainFrom(session.adapterHost)) {
+        const current = runtime.sessions.get(host)
+        if (current !== undefined && current !== session && current.status === 'starting') {
+            const registration = lastSingleRegistration(current, token)
+            if (registration !== undefined) {
+                const owned = singletonWinner(runtime, current, registration)
+                if (owned.session.status === 'starting' || owned.session.status === 'active') {
+                    return owned
+                }
+            }
+        }
+        const declared = scope
+            .declarationsOf(host)
+            .some((entry) => entry.token === token && !entry.multi)
+        if (declared) {
+            return undefined
+        }
+    }
+    return undefined
+}
+
 /**
  * Resolve a dependency declared through `uses`.
+ *
+ * A provider on an ancestor that is still `starting` is part of the declared graph. `uses` waits
+ * for that factory instead of failing `UNKNOWN_SERVICE`. Element `inject` still waits until the
+ * provider is `active`.
  *
  * @param runtime - The application runtime.
  * @param session - The session that declares the dependency.
@@ -598,6 +629,10 @@ export async function resolveUsedValue(
     const own = lastSingleRegistration(session, token)
     if (own !== undefined) {
         return resolveProviderValue(runtime, session, own)
+    }
+    const starting = nearestStartingProvider(runtime, session, token)
+    if (starting !== undefined) {
+        return resolveProviderValue(runtime, starting.session, starting.registration)
     }
     const location = locateSingle(runtime, session.adapterHost, token, session)
     if (location.kind === 'local') {
