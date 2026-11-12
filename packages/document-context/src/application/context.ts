@@ -8,7 +8,6 @@ import type { HostAdapter } from '../domain/ports/host'
 import type { SsrPort } from '../domain/ports/ssr'
 import type { Host } from '../domain/model/session'
 import type { TokenLike } from '../domain/model/token'
-import type { DocumentContextError } from '../domain/model/errors'
 import type { ProviderRegistration } from '../domain/model/blueprint'
 import type { SessionRuntime } from './session'
 
@@ -74,8 +73,8 @@ export interface PendingRequest {
     settled: boolean
     /** Resolve the request with the collected values. */
     resolve(values: unknown[]): void
-    /** Reject the request. */
-    reject(error: DocumentContextError): void
+    /** Reject the request. Factory failures are forwarded unchanged. */
+    reject(error: unknown): void
     /** Release every resource the request holds. */
     release(): void
 }

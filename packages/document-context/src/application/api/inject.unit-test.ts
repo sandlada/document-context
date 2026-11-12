@@ -383,4 +383,22 @@ describe('inject', () => {
         expect(promiseError).toBe('boom')
         expect(streamError).toBe('boom')
     })
+
+    it('[API #11] 等待中的元素注入轉發工廠拋出的值', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const pending = app.inject(themeToken)(host)
+        const provider = app.mount(
+            pipe(
+                createContext({}),
+                provide(themeToken, () => {
+                    throw 'boom'
+                }),
+            ),
+        )(host)
+        await provider.ready
+        await adapter.clock.flushMicrotasks()
+
+        await expect(pending).rejects.toBe('boom')
+    })
 })

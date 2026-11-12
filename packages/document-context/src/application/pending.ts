@@ -38,7 +38,7 @@ export interface PendingRequestOptions {
     /** Called when the request resolves. */
     readonly onResolve: (values: unknown[]) => void
     /** Called when the request fails. */
-    readonly onReject: (error: DocumentContextError) => void
+    readonly onReject: (error: unknown) => void
 }
 
 /**
@@ -80,7 +80,7 @@ export function createPendingRequest(
             release()
             options.onResolve(values)
         },
-        reject(error: DocumentContextError): void {
+        reject(error: unknown): void {
             if (request.settled) {
                 return
             }
@@ -254,7 +254,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
         if (location.kind === 'local') {
             void resolveMultiGroups(runtime, location.groups, request.direction).then(
                 (values) => request.resolve(values),
-                (error: unknown) => request.reject(toError(error)),
+                (error: unknown) => request.reject(error),
             )
             return
         }
@@ -263,7 +263,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
             if (groups.length > 0) {
                 void settleInjectGroups(groups, request.direction).then(
                     (settled) => request.resolve(settled),
-                    (error: unknown) => request.reject(toError(error)),
+                    (error: unknown) => request.reject(error),
                 )
             }
         }
@@ -277,7 +277,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
             location.registration,
         ).then(
             (value) => request.resolve([value]),
-            (error: unknown) => request.reject(toError(error)),
+            (error: unknown) => request.reject(error),
         )
         return
     }
@@ -287,7 +287,7 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
         if (first !== undefined) {
             void Promise.resolve(first).then(
                 (value) => request.resolve([value]),
-                (error: unknown) => request.reject(toError(error)),
+                (error: unknown) => request.reject(error),
             )
         }
     }
@@ -304,12 +304,4 @@ function nearestSession(
         }
     }
     return null
-}
-
-function toError(error: unknown): DocumentContextError {
-    if (error instanceof DocumentContextError) {
-        return error
-    }
-    const cause = error instanceof Error ? error : new Error(String(error))
-    return new DocumentContextError('UNKNOWN_SERVICE', cause.message, { details: { cause } })
 }
