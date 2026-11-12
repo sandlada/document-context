@@ -233,6 +233,9 @@ async function initializeSession(
         // dependencies are created. This is an ordering yield, not a time behaviour: every
         // time-dependent behaviour goes through the scheduler port.
         await Promise.resolve()
+        if (session.isDisposed) {
+            return
+        }
         if (detectUsesCycle(session.blueprint.providers)) {
             throw new DocumentContextError(
                 'CIRCULAR_DEPENDENCY',

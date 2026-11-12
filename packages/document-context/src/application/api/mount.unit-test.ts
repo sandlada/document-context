@@ -159,6 +159,31 @@ describe('mount', () => {
         expect(session.status).toBe('disposed')
     })
 
+    it('[API #16] abort 之後不再跑 onMount 或 eager 工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        const events: string[] = []
+        const controller = new AbortController()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                provide(eagerToken, () => {
+                    events.push('eager')
+                    return 1
+                }, { eager: true }),
+                onMount(() => {
+                    events.push('mount')
+                }),
+            ),
+            { signal: controller.signal },
+        )(adapter.createHost())
+
+        controller.abort(new Error('cancelled by the caller'))
+
+        await expect(session.ready).rejects.toThrow('cancelled by the caller')
+        expect(session.status).toBe('disposed')
+        expect(events).toEqual([])
+    })
+
     it('[API #17] 跨宿主同 keyed token 拋 KEYED_CONFLICT', async () => {
         const { app, adapter } = createTestApplication()
         const first = app.mount(createContext({ count: 0 }), { token: 'app:shared' })(

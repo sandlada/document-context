@@ -472,6 +472,9 @@ export function resolveProviderValue(
     session: SessionRuntime<any>,
     registration: ProviderRegistration,
 ): Promise<unknown> {
+    if (session.abortSignal.aborted) {
+        return Promise.reject(disposalError(session))
+    }
     return followSessionAbort(session, produceProviderValue(runtime, session, registration))
 }
 
