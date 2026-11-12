@@ -489,10 +489,10 @@ export function read<S, R>(selector: (state: S) => R): (session: Session<S, any>
  * console.log(read<CounterState, number>((s) => s.count)(session)) // 1
  * ```
  *
- * @param updater - The updater. Must be synchronous.
+ * @param updater - The next snapshot, or a synchronous function that returns it.
  * @returns A function that takes the session.
  */
-export function update<S>(updater: (state: S) => S): (session: Session<S, any>) => boolean {
+export function update<S>(updater: S | ((state: S) => S)): (session: Session<S, any>) => boolean {
     return getDefaultApplication().update(updater)
 }
 

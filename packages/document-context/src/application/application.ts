@@ -20,7 +20,7 @@ import {
     injectAllTokens$,
     type InjectAllOptions,
 } from './api/inject-all'
-import { updateState } from './api/update'
+import { updateState, type StateUpdate } from './api/update'
 import { readState } from './api/read'
 import { disposeSession } from './api/dispose'
 import { subscribeState } from './api/subscribe'
@@ -199,10 +199,10 @@ export interface Application<THost extends Host = Host, TTarget = unknown> {
      * The state type cannot be inferred from the updater alone; annotate the callback parameter
      * (or pass the type argument) when the shape is not obvious.
      *
-     * @param updater - The updater. Must be synchronous.
+     * @param updater - The next snapshot, or a synchronous function that returns it.
      * @returns A function that takes the session.
      */
-    update<S = any>(updater: (state: S) => S): (session: Session<S, any>) => boolean
+    update<S = any>(updater: StateUpdate<S>): (session: Session<S, any>) => boolean
     /**
      * Observe the state of a session.
      *
@@ -365,8 +365,8 @@ class ApplicationImpl<THost extends Host, TTarget> implements Application<THost,
         return (session: Session<S, any>) => readState(this, session, selector)
     }
 
-    update<S = any>(updater: (state: S) => S): (session: Session<S, any>) => boolean {
-        return (session: Session<S, any>) => updateState(this, session, updater)
+    update<S = any>(update: StateUpdate<S>): (session: Session<S, any>) => boolean {
+        return (session: Session<S, any>) => updateState(this, session, update)
     }
 
     subscribe$<S>(listener: (state: S) => void): (session: Session<S, any>) => Subscription {

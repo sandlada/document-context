@@ -56,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An element `injectAll` of a multi factory already running on a `starting` session joins that factory. When the caller is the factory itself, the collection is rejected with `CIRCULAR_DEPENDENCY` instead of waiting on `ready`.
 - `suspensionTtlMs: 0` disposes a keyed session on a confirmed disconnect, with reason `disconnect`, and does not enter `suspended` or run `onSuspend`. A pinned session still suspends.
 - A pending element `inject` rejects with `DISPOSED_SESSION` when the session that owns that element is disposed, even if the element stays connected.
+- `update` accepts the next snapshot directly, as well as a function. Keys omitted from that snapshot are removed.
 
 ### Changed
 

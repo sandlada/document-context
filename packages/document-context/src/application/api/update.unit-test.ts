@@ -38,6 +38,19 @@ describe('update', () => {
         expect(app.read((state: CounterState) => state)(session)).toEqual({ count: 1 })
     })
 
+    it('[API #3] 直接傳物件整份替換且刪除未寫的鍵', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(
+            createContext({ count: 0, label: 'first' } as CounterState),
+        )(adapter.createHost())
+        await session.ready
+
+        const updated = app.update({ count: 1 })(session)
+
+        expect(updated).toBe(true)
+        expect(app.read((state: CounterState) => state)(session)).toEqual({ count: 1 })
+    })
+
     it('[API #3] disposed 會話的 update 回傳 false', async () => {
         const { app, adapter } = createTestApplication()
         const session = app.mount(createContext({ count: 0 }))(adapter.createHost())
