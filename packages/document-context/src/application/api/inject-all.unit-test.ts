@@ -205,4 +205,31 @@ describe('injectAll', () => {
         expect(outcome).toMatchObject({ code: 'CIRCULAR_DEPENDENCY' })
         expect(session.status).toBe('disposed')
     })
+
+    it('[API #11] injectAll$ 轉發工廠拋出的值，不改寫成 UNKNOWN_SERVICE', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(pluginToken, () => {
+                    throw 'boom'
+                }, { multi: true }),
+            ),
+        )(host)
+        await session.ready
+
+        const promiseError = await app.injectAll(pluginToken)(session).then(
+            () => undefined,
+            (error: unknown) => error,
+        )
+        const streamError = await new Promise<unknown>((resolve) => {
+            app.injectAll$(pluginToken)(session).subscribe({
+                error: (error: unknown) => resolve(error),
+            })
+        })
+
+        expect(promiseError).toBe('boom')
+        expect(streamError).toBe('boom')
+    })
 })

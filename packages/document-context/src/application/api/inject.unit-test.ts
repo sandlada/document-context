@@ -356,4 +356,31 @@ describe('inject', () => {
 
         expect(outcome).toMatchObject({ code: 'DISPOSED_SESSION' })
     })
+
+    it('[API #11] inject$ 轉發工廠拋出的值，不改寫成 UNKNOWN_SERVICE', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(themeToken, () => {
+                    throw 'boom'
+                }),
+            ),
+        )(host)
+        await session.ready
+
+        const promiseError = await app.inject(themeToken)(session).then(
+            () => undefined,
+            (error: unknown) => error,
+        )
+        const streamError = await new Promise<unknown>((resolve) => {
+            app.inject$(themeToken)(session).subscribe({
+                error: (error: unknown) => resolve(error),
+            })
+        })
+
+        expect(promiseError).toBe('boom')
+        expect(streamError).toBe('boom')
+    })
 })

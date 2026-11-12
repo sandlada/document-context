@@ -217,11 +217,7 @@ export function injectToken$<T, TTarget = unknown>(
                     return
                 }
                 gate.markFinished()
-                subscriber.error(
-                    error instanceof DocumentContextError
-                        ? error
-                        : new DocumentContextError('UNKNOWN_SERVICE', String(error)),
-                )
+                subscriber.error(error)
             },
         )
         return () => {
