@@ -17,6 +17,12 @@ function element(tag = 'div'): Element {
     return node
 }
 
+async function flush(): Promise<void> {
+    for (let index = 0; index < 8; index += 1) {
+        await Promise.resolve()
+    }
+}
+
 afterEach(() => {
     for (const node of created.splice(0)) {
         node.remove()
@@ -165,5 +171,32 @@ describe('cross bundle', () => {
         await expect(
             consumerApp.injectAll(pluginToken, { direction: 'from-top-to-bottom' })(leaf),
         ).resolves.toEqual(['far-a', 'far-b', 'near-a', 'near-b'])
+    })
+
+    it('[SCOPE #12] 跨 bundle 的等待在提供者換宿主後會完成', async () => {
+        const providerBundle = createDomHostAdapter()
+        const consumerBundle = createDomHostAdapter()
+        const providerApp = createApplication({ host: providerBundle })
+        const consumerApp = createApplication({ host: consumerBundle })
+        const first = element('section')
+        const second = element('section')
+        const session = providerApp.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+            { token: 'app:theme-host' },
+        )(first)
+        await session.ready
+
+        const pending = consumerApp.inject(themeToken)(second)
+        await flush()
+
+        first.remove()
+        const moved = providerApp.mount(
+            pipe(createContext({}), provide(themeToken, () => 'other')),
+            { token: 'app:theme-host' },
+        )(second)
+        expect(moved).toBe(session)
+        await flush()
+
+        await expect(pending).resolves.toBe('dark')
     })
 })

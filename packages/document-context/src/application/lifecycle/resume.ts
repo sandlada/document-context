@@ -220,6 +220,7 @@ export function moveConnectedSession(
     runtime.ports.host.scope.declare(host, session.declarations())
     session.attachContextRequest()
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
+    runtime.ports.host.scope.announce(host, 'mount', token)
     schedulePendingRetry(runtime)
 }
 
