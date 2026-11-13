@@ -753,15 +753,15 @@ describe('resume', () => {
 
         adapter.setConnected(first, false)
         await adapter.clock.flushMicrotasks()
-        expect(session.status).toBe('starting')
+        expect(session.status).toBe('suspended')
+        await session.ready
 
         const second = adapter.createHost()
         const moved = app.mount(blueprint, { token: 'app:clear-flag' })(second)
         expect(moved).toBe(session)
+        expect(session.status).toBe('active')
 
         release()
-        await session.ready
-        expect(session.status).toBe('active')
         expect(app.read((state: CounterState) => state.count)(session)).toBe(1)
     })
 })

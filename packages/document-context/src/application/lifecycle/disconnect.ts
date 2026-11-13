@@ -8,6 +8,7 @@
 import { DocumentContextError } from '../../domain/model/errors'
 import type { ApplicationRuntime } from '../context'
 import type { SessionRuntime } from '../session'
+import { schedulePendingRetry } from '../pending'
 import { scheduleRecheck } from '../scheduling'
 import { suspendSession } from './resume'
 
@@ -62,9 +63,14 @@ export function handleConfirmedDisconnect(
     }
     if (session.token !== null) {
         if (session.status === 'starting') {
-            // The initialization decides what a disconnect means: a keyed session suspends, an
-            // anonymous one is disposed.
+            // Confirmed disconnect ends initialization now. Waiting for an in-flight eager factory
+            // would leave `ready` and the suspension TTL stuck.
             session.markDisconnected()
+            suspendSession(runtime, session)
+            if (!session.isDisposed) {
+                session.markReady()
+            }
+            schedulePendingRetry(runtime)
             return
         }
         suspendSession(runtime, session)

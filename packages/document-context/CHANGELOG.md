@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A confirmed disconnect during `starting` suspends a keyed session and fulfils `ready` immediately, even when an eager factory is still running. `onMount` does not run after that. `suspensionTtlMs: 0` still disposes instead.
 - Subscribing to `lifecycle$` after the session is disposed still delivers the `disposed` event, including its `reason`, and then completes.
 - A `context-request` answer of `undefined` counts as the nearest provider's value. It is no longer treated as "nobody answered".
 - Mounting a keyed session again on the same host after it was suspended resumes that session. It no longer throws `KEYED_CONFLICT`.

@@ -75,6 +75,54 @@ describe('mount', () => {
         expect(session.status).toBe('suspended')
     })
 
+    it('[LC #2] eager 尚未結束時確認斷線仍立刻暫停並 fulfill', async () => {
+        const order: string[] = []
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                provide(
+                    eagerToken,
+                    async () => {
+                        order.push('eager')
+                        await gate
+                        order.push('eager-done')
+                        return 1
+                    },
+                    { eager: true },
+                ),
+                onMount(() => {
+                    order.push('mount')
+                }),
+            ),
+            { token: 'app:eager-disconnect' },
+        )(host)
+        for (let step = 0; step < 4; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('starting')
+        expect(order).toEqual(['eager'])
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+
+        expect(session.status).toBe('suspended')
+        await session.ready
+        expect(order).toEqual(['eager'])
+
+        release()
+        for (let step = 0; step < 4; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('suspended')
+        expect(order).not.toContain('mount')
+    })
+
     it('[LC #2] 初始化期間確認斷線的匿名會話以 UNCONNECTED_HOST 拒絕', async () => {
         const { app, adapter } = createTestApplication()
         const host = adapter.createHost()

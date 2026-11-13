@@ -23,7 +23,7 @@ import type { SessionRuntime } from '../session'
 export async function runHooks(session: SessionRuntime<any>, type: HookType): Promise<void> {
     const fatal = type === 'mount'
     for (const hook of session.blueprint.hooks) {
-        if (session.isDisposed) {
+        if (session.isDisposed || (fatal && session.status !== 'starting')) {
             return
         }
         if (hook.type !== type) {

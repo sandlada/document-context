@@ -262,7 +262,7 @@ async function initializeSession(
         // dependencies are created. This is an ordering yield, not a time behaviour: every
         // time-dependent behaviour goes through the scheduler port.
         await Promise.resolve()
-        if (session.isDisposed) {
+        if (session.isDisposed || session.status !== 'starting') {
             return
         }
         if (detectUsesCycle(session.blueprint.providers)) {
@@ -277,8 +277,11 @@ async function initializeSession(
                 continue
             }
             await resolveProviderValue(runtime, session, registration)
+            if (session.isDisposed || session.status !== 'starting') {
+                return
+            }
         }
-        if (session.isDisposed) {
+        if (session.isDisposed || session.status !== 'starting') {
             return
         }
         const hostIsGone = (): boolean =>
@@ -292,7 +295,7 @@ async function initializeSession(
             // The server has no DOM lifecycle: `onMount` only runs in the browser.
             await session.runMountHooks()
         }
-        if (session.isDisposed) {
+        if (session.isDisposed || session.status !== 'starting') {
             return
         }
         if (hostIsGone()) {
@@ -303,6 +306,9 @@ async function initializeSession(
         session.markReady()
         schedulePendingRetry(runtime)
     } catch (error) {
+        if (session.isDisposed || session.status !== 'starting') {
+            return
+        }
         session.fail(error)
         session.dispose('explicit')
     }
