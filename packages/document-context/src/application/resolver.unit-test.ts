@@ -48,4 +48,41 @@ describe('context request handler', () => {
         expect(resolvedDuringCallback).toBeUndefined()
         expect(detail.resolved).toBe(true)
     })
+
+    it('[SCOPE #9] 落敗的單值 singleton 不回答 context-request', async () => {
+        const { app, adapter } = createTestApplication()
+        const token = defineToken<string>('public')('app:handler-singleton')
+        let calls = 0
+        const owner = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => 'multi', { lifecycle: 'singleton', multi: true }),
+            ),
+        )(adapter.createHost())
+        await owner.ready
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => {
+                    calls += 1
+                    return 'single'
+                }, { lifecycle: 'singleton' }),
+            ),
+        )(adapter.createHost()) as SessionRuntime
+        await session.ready
+
+        const values: unknown[] = []
+        const detail: ContextRequestDetail = {
+            context: 'app:handler-singleton',
+            callback: (value: unknown) => {
+                values.push(value)
+            },
+        }
+        createRequestHandler(session.owner, session)(detail)
+        await Promise.resolve()
+
+        expect(values).toEqual([])
+        expect(detail.resolved).toBeUndefined()
+        expect(calls).toBe(0)
+    })
 })

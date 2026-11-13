@@ -814,7 +814,11 @@ export function createRequestHandler(
         if (registration === undefined) {
             return
         }
-        detail.callback(resolveProviderValue(runtime, session, registration))
+        const owned = singletonWinner(runtime, session, registration)
+        if (owned === undefined || owned.session !== session) {
+            return
+        }
+        detail.callback(resolveProviderValue(runtime, session, owned.registration))
         detail.resolved = true
     }
 }

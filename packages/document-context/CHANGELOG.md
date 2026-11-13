@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An element `inject` or `injectAll` that starts while the element is disconnected waits one microtask before `UNCONNECTED_HOST`. Reconnecting under a provider during that check still resolves.
 - Once a session is `disposed`, later `onSuspend`, `onResume`, `onAdopt`, and `onMount` hooks do not run. A thrown hook still lets the remaining hooks of that kind run.
 - A `multi` singleton that already owns a token keeps the later single-value singleton from running its factory. Single-value `inject` does not receive that later value.
+- That later registration also does not answer `context-request`, so a DOM lookup cannot run its factory either.
 
 ### Changed
 
