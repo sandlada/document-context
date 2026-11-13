@@ -33,10 +33,19 @@ class ErrorStreamImpl implements ErrorStream {
     private dropped = 0
     private drained = false
     private closed = false
+    private finished = false
+    private depth = 0
 
     constructor() {
         this.deliver = createOrderedSink((error) => {
-            this.subject.next(error)
+            this.depth += 1
+            try {
+                this.subject.next(error)
+            } finally {
+                this.depth -= 1
+            }
+        }, () => {
+            this.finish()
         })
         this.observable = new Observable<DocumentContextError>((subscriber) => {
             if (this.closed) {
@@ -95,6 +104,17 @@ class ErrorStreamImpl implements ErrorStream {
             return
         }
         this.closed = true
+        if (this.depth === 0) {
+            this.finish()
+        }
+    }
+
+    /** Complete after the current fan-out has reached every subscriber. */
+    private finish(): void {
+        if (!this.closed || this.finished || this.depth !== 0) {
+            return
+        }
+        this.finished = true
         this.subject.complete()
     }
 }

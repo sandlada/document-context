@@ -9,9 +9,13 @@
  * Create a sink that forwards values to `emit` in call order.
  *
  * @param emit - The synchronous fan-out.
+ * @param onDrained - Called after the outermost delivery finishes, including values queued during it.
  * @returns The ordered sink.
  */
-export function createOrderedSink<T>(emit: (value: T) => void): (value: T) => void {
+export function createOrderedSink<T>(
+    emit: (value: T) => void,
+    onDrained?: () => void,
+): (value: T) => void {
     const pending: T[] = []
     let delivering = false
     return (value: T): void => {
@@ -28,5 +32,6 @@ export function createOrderedSink<T>(emit: (value: T) => void): (value: T) => vo
         } finally {
             delivering = false
         }
+        onDrained?.()
     }
 }

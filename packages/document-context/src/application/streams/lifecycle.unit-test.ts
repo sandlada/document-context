@@ -79,6 +79,30 @@ describe('lifecycle stream', () => {
         expect(second).toEqual(['active', 'suspended'])
     })
 
+    it('[RX #5] 轉移途中完成時，其他訂閱者仍先收到這次事件', () => {
+        const stream = createLifecycleStream()
+        const second: string[] = []
+        let completed = false
+        stream.observable.subscribe((event) => {
+            if (event.type === 'active') {
+                stream.complete()
+            }
+        })
+        stream.observable.subscribe({
+            next: (event) => {
+                second.push(event.type)
+            },
+            complete: () => {
+                completed = true
+            },
+        })
+
+        stream.transition({ type: 'active' }, { type: 'active' })
+
+        expect(second).toEqual(['active'])
+        expect(completed).toBe(true)
+    })
+
     it('[RX #3] 完成後不再推送', () => {
         const stream = createLifecycleStream()
         const seen: string[] = []

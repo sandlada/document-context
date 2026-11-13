@@ -105,4 +105,28 @@ describe('error stream', () => {
         expect(first).toEqual(['one', 'two'])
         expect(second).toEqual(['one', 'two'])
     })
+
+    it('[RX #4] 推送途中完成時，其他訂閱者仍先收到這次錯誤', () => {
+        const stream = createErrorStream()
+        const second: string[] = []
+        let completed = false
+        stream.observable.subscribe((error) => {
+            if (error.message === 'one') {
+                stream.complete()
+            }
+        })
+        stream.observable.subscribe({
+            next: (error) => {
+                second.push(error.message)
+            },
+            complete: () => {
+                completed = true
+            },
+        })
+
+        stream.push(new DocumentContextError('HOOK_ERROR', 'one'))
+
+        expect(second).toEqual(['one'])
+        expect(completed).toBe(true)
+    })
 })

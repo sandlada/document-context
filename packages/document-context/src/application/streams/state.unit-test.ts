@@ -106,4 +106,28 @@ describe('state stream', () => {
         expect(first).toEqual([0, 1, 2])
         expect(second).toEqual([0, 1, 2])
     })
+
+    it('[RX #2] 推送途中完成時，其他訂閱者仍先收到這次快照', () => {
+        const stream = createStateStream({ count: 0 })
+        const second: number[] = []
+        let completed = false
+        stream.observable.subscribe((state) => {
+            if (state.count === 1) {
+                stream.complete()
+            }
+        })
+        stream.observable.subscribe({
+            next: (state) => {
+                second.push(state.count)
+            },
+            complete: () => {
+                completed = true
+            },
+        })
+
+        stream.push({ count: 1 })
+
+        expect(second).toEqual([0, 1])
+        expect(completed).toBe(true)
+    })
 })

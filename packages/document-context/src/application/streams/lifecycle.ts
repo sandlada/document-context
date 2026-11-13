@@ -29,10 +29,19 @@ class LifecycleStreamImpl implements LifecycleStream {
     private readonly deliver: (event: LifecycleEvent) => void
     private backed: LifecycleEvent | null = null
     private closed = false
+    private finished = false
+    private depth = 0
 
     constructor() {
         this.deliver = createOrderedSink((event) => {
-            this.subject.next(event)
+            this.depth += 1
+            try {
+                this.subject.next(event)
+            } finally {
+                this.depth -= 1
+            }
+        }, () => {
+            this.finish()
         })
         this.observable = new Observable<LifecycleEvent>((subscriber) => {
             if (this.closed) {
@@ -71,6 +80,17 @@ class LifecycleStreamImpl implements LifecycleStream {
             return
         }
         this.closed = true
+        if (this.depth === 0) {
+            this.finish()
+        }
+    }
+
+    /** Complete after the current fan-out has reached every subscriber. */
+    private finish(): void {
+        if (!this.closed || this.finished || this.depth !== 0) {
+            return
+        }
+        this.finished = true
         this.subject.complete()
     }
 }

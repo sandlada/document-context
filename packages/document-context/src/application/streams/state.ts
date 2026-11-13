@@ -29,11 +29,20 @@ class StateStreamImpl<S> implements StateStream<S> {
     private readonly deliver: (value: S) => void
     private snapshot: S
     private closed = false
+    private finished = false
+    private depth = 0
 
     constructor(initial: S) {
         this.snapshot = initial
         this.deliver = createOrderedSink((value) => {
-            this.subject.next(value)
+            this.depth += 1
+            try {
+                this.subject.next(value)
+            } finally {
+                this.depth -= 1
+            }
+        }, () => {
+            this.finish()
         })
         this.observable = new Observable<S>((subscriber) => {
             if (this.closed) {
@@ -74,6 +83,19 @@ class StateStreamImpl<S> implements StateStream<S> {
             return
         }
         this.closed = true
+        if (this.depth === 0) {
+            this.finish()
+        }
+    }
+
+    /**
+     * Complete the subject once the current fan-out has reached every subscriber.
+     */
+    private finish(): void {
+        if (!this.closed || this.finished || this.depth !== 0) {
+            return
+        }
+        this.finished = true
         this.subject.complete()
     }
 }
