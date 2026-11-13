@@ -37,6 +37,26 @@ function armSuspensionTimer(runtime: ApplicationRuntime, session: SessionRuntime
 }
 
 /**
+ * Keep a keyed session suspended when resume cannot activate.
+ *
+ * The host disconnected before `active`. `onSuspend` for this departure already ran, or the session
+ * was already suspended, so this does not run the hooks again.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session that stays suspended.
+ */
+function staySuspended(runtime: ApplicationRuntime, session: SessionRuntime<any>): void {
+    if (session.isDisposed) {
+        return
+    }
+    if (session.status === 'active' || session.status === 'starting') {
+        session.markSuspended()
+    }
+    armSuspensionTimer(runtime, session)
+    runtime.notifySessionsChanged()
+}
+
+/**
  * Suspend a keyed session.
  *
  * @param runtime - The application runtime.
@@ -210,7 +230,7 @@ function resumeAfterRebind(runtime: ApplicationRuntime, session: SessionRuntime<
             return
         }
         if (!runtime.ports.host.connectivity.isConnected(session.adapterHost)) {
-            armSuspensionTimer(runtime, session)
+            staySuspended(runtime, session)
             return
         }
         const resumePending = settleHooks(session, 'resume')
@@ -219,7 +239,7 @@ function resumeAfterRebind(runtime: ApplicationRuntime, session: SessionRuntime<
                 return
             }
             if (!runtime.ports.host.connectivity.isConnected(session.adapterHost)) {
-                armSuspensionTimer(runtime, session)
+                staySuspended(runtime, session)
                 return
             }
             session.activate(true)

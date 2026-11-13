@@ -562,4 +562,52 @@ describe('resume', () => {
         expect(session.status).toBe('active')
         expect(app.read((state: CounterState) => state.count)(session)).toBe(2)
     })
+
+    it('[LC #5] 恢復尚未完成時新宿主斷線，會話進入 suspended 並可再次恢復', async () => {
+        const { app, adapter } = createTestApplication()
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        let suspends = 0
+        const blueprint = pipe(
+            createContext({ count: 1 }),
+            onSuspend(() => {
+                suspends += 1
+                return gate
+            }),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:resume-disconnect' })(first)
+        await session.ready
+        app.update({ count: 4 })(session)
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+
+        const second = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:resume-disconnect' })(second)
+        expect(resumed).toBe(session)
+
+        adapter.setConnected(second, false)
+        release()
+        for (let step = 0; step < 8; step += 1) {
+            await Promise.resolve()
+        }
+        await adapter.clock.flushMicrotasks()
+
+        expect(session.status).toBe('suspended')
+        expect(suspends).toBe(1)
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(4)
+
+        const third = adapter.createHost()
+        const again = app.mount(blueprint, { token: 'app:resume-disconnect' })(third)
+        expect(again).toBe(session)
+        await adapter.clock.flushMicrotasks()
+        for (let step = 0; step < 4; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('active')
+        expect(suspends).toBe(1)
+    })
 })
