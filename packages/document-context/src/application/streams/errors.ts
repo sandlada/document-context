@@ -8,6 +8,7 @@
 
 import { Observable, Subject } from 'rxjs'
 import { DocumentContextError } from '../../domain/model/errors'
+import { createOrderedSink } from './ordered-delivery'
 
 /** The maximum number of buffered initialization errors. */
 export const ERROR_BUFFER_LIMIT = 32
@@ -27,12 +28,16 @@ export interface ErrorStream {
 
 class ErrorStreamImpl implements ErrorStream {
     private readonly subject = new Subject<DocumentContextError>()
+    private readonly deliver: (error: DocumentContextError) => void
     private buffer: DocumentContextError[] = []
     private dropped = 0
     private drained = false
     private closed = false
 
     constructor() {
+        this.deliver = createOrderedSink((error) => {
+            this.subject.next(error)
+        })
         this.observable = new Observable<DocumentContextError>((subscriber) => {
             if (this.closed) {
                 subscriber.complete()
@@ -75,7 +80,7 @@ class ErrorStreamImpl implements ErrorStream {
             return
         }
         if (this.drained) {
-            this.subject.next(error)
+            this.deliver(error)
             return
         }
         this.buffer.push(error)

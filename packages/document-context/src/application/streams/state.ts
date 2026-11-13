@@ -7,6 +7,7 @@
  */
 
 import { Observable, Subject } from 'rxjs'
+import { createOrderedSink } from './ordered-delivery'
 
 export interface StateStream<S> {
     /** The public stream. */
@@ -25,11 +26,15 @@ export interface StateStream<S> {
 
 class StateStreamImpl<S> implements StateStream<S> {
     private readonly subject = new Subject<S>()
+    private readonly deliver: (value: S) => void
     private snapshot: S
     private closed = false
 
     constructor(initial: S) {
         this.snapshot = initial
+        this.deliver = createOrderedSink((value) => {
+            this.subject.next(value)
+        })
         this.observable = new Observable<S>((subscriber) => {
             if (this.closed) {
                 subscriber.complete()
@@ -61,7 +66,7 @@ class StateStreamImpl<S> implements StateStream<S> {
             return
         }
         this.snapshot = next
-        this.subject.next(next)
+        this.deliver(next)
     }
 
     complete(): void {

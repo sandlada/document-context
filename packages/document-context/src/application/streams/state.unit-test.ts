@@ -86,4 +86,24 @@ describe('state stream', () => {
         expect(first).toEqual([0, 1])
         expect(second).toEqual([0, 1])
     })
+
+    it('[RX #2] 推送回呼裡再推送時，其他訂閱者仍按順序收到', () => {
+        const stream = createStateStream({ count: 0 })
+        const first: number[] = []
+        const second: number[] = []
+        stream.observable.subscribe((state) => {
+            first.push(state.count)
+            if (state.count === 1) {
+                stream.push({ count: 2 })
+            }
+        })
+        stream.observable.subscribe((state) => {
+            second.push(state.count)
+        })
+
+        stream.push({ count: 1 })
+
+        expect(first).toEqual([0, 1, 2])
+        expect(second).toEqual([0, 1, 2])
+    })
 })

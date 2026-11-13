@@ -8,6 +8,7 @@
 
 import { Observable, Subject } from 'rxjs'
 import type { LifecycleEvent } from '../../domain/model/lifecycle'
+import { createOrderedSink } from './ordered-delivery'
 
 export interface LifecycleStream {
     /** The public stream. */
@@ -25,10 +26,14 @@ export interface LifecycleStream {
 
 class LifecycleStreamImpl implements LifecycleStream {
     private readonly subject = new Subject<LifecycleEvent>()
+    private readonly deliver: (event: LifecycleEvent) => void
     private backed: LifecycleEvent | null = null
     private closed = false
 
     constructor() {
+        this.deliver = createOrderedSink((event) => {
+            this.subject.next(event)
+        })
         this.observable = new Observable<LifecycleEvent>((subscriber) => {
             if (this.closed) {
                 subscriber.complete()
@@ -58,7 +63,7 @@ class LifecycleStreamImpl implements LifecycleStream {
             return
         }
         this.backed = backed
-        this.subject.next(event)
+        this.deliver(event)
     }
 
     complete(): void {

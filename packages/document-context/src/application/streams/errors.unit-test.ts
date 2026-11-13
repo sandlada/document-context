@@ -85,4 +85,24 @@ describe('error stream', () => {
 
         expect(seen).toEqual([])
     })
+
+    it('[RX #4] 錯誤回呼裡再推送時，其他訂閱者仍按順序收到', () => {
+        const stream = createErrorStream()
+        const first: string[] = []
+        const second: string[] = []
+        stream.observable.subscribe((error) => {
+            first.push(error.message)
+            if (error.message === 'one') {
+                stream.push(new DocumentContextError('HOOK_ERROR', 'two'))
+            }
+        })
+        stream.observable.subscribe((error) => {
+            second.push(error.message)
+        })
+
+        stream.push(new DocumentContextError('HOOK_ERROR', 'one'))
+
+        expect(first).toEqual(['one', 'two'])
+        expect(second).toEqual(['one', 'two'])
+    })
 })
