@@ -343,6 +343,33 @@ describe('injection lifecycle', () => {
         await expect(app.injectAll(token)(owner)).resolves.toEqual(['multi'])
     })
 
+    it('[SCOPE #9] 落敗的 eager singleton 在初始化時不執行工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        const token = defineToken<string>('public')('app:eager-loser')
+        let calls = 0
+        const owner = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => 'multi', { lifecycle: 'singleton', multi: true }),
+            ),
+        )(adapter.createHost())
+        await owner.ready
+
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => {
+                    calls += 1
+                    return 'single'
+                }, { lifecycle: 'singleton', eager: true }),
+            ),
+        )(adapter.createHost())
+        await session.ready
+
+        expect(session.status).toBe('active')
+        expect(calls).toBe(0)
+    })
+
     it('[SCOPE #9] 暫停中的 singleton 擁有者不回答注入', async () => {
         const { app, adapter } = createTestApplication()
         const ownerHost = adapter.createHost()

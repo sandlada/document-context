@@ -12,7 +12,7 @@ import type { Host, ServerHost, Session } from '../../domain/model/session'
 import type { ApplicationRuntime } from '../context'
 import { SessionRuntime } from '../session'
 import { assertUsesResolvable, detectUsesCycle, resolveProviderValue } from '../resolver'
-import { claimSingleton } from '../scopes/lifecycle'
+import { claimSingleton, isWinningSingleton } from '../scopes/lifecycle'
 import { retryPendingRequests, schedulePendingRetry } from '../pending'
 import {
     suspendSession,
@@ -258,7 +258,7 @@ async function initializeSession(
         }
         assertUsesResolvable(runtime, session)
         for (const registration of session.blueprint.providers) {
-            if (!registration.eager) {
+            if (!registration.eager || !isWinningSingleton(runtime, registration)) {
                 continue
             }
             await resolveProviderValue(runtime, session, registration)
