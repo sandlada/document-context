@@ -455,6 +455,52 @@ describe('resume', () => {
         expect(session.status).toBe('suspended')
     })
 
+    it('[LC #2] onSuspend 尚未落定時 active 會話仍回答 inject', async () => {
+        const theme = defineToken<string>('public')('app:suspend-visible')
+        const { app, adapter } = createTestApplication()
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const parent = adapter.createHost()
+        const child = adapter.createHost()
+        child.setParent(parent)
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(theme, () => 'dark'),
+                onSuspend(() => gate),
+            ),
+            { token: 'app:suspend-visible' },
+        )(parent)
+        await session.ready
+
+        adapter.setConnected(parent, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('active')
+
+        await expect(app.inject(theme)(child)).resolves.toBe('dark')
+
+        release()
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('suspended')
+        await expect(app.inject(theme)(session)).resolves.toBe('dark')
+
+        let settled = false
+        void app.inject(theme)(child).then(
+            () => {
+                settled = true
+            },
+            () => {
+                settled = true
+            },
+        )
+        await adapter.clock.flushMicrotasks()
+        expect(settled).toBe(false)
+    })
+
     it('[LC #8] onResume 的 Promise 落定後才進入 active', async () => {
         const { app, adapter } = createTestApplication()
         const order: string[] = []

@@ -75,12 +75,17 @@ export function suspendSession(runtime: ApplicationRuntime, session: SessionRunt
         return
     }
     const token = session.token
-    session.detachContextRequest()
-    runtime.ports.host.scope.undeclare(session.adapterHost)
+    const host = session.adapterHost
     const finish = (): void => {
         suspending.delete(session)
         if (session.isDisposed || session.status === 'suspended' || session.status === 'disposed') {
             return
+        }
+        // The session stays `active` until the suspend hooks settle, and an active session still
+        // answers `inject`. Hide it only when the status actually changes.
+        if (session.adapterHost === host) {
+            session.detachContextRequest()
+            runtime.ports.host.scope.undeclare(host)
         }
         session.markSuspended()
         if (token !== null) {
@@ -248,6 +253,8 @@ export function resumeSession(
 ): void {
     const token = session.token
     const previous = session.adapterHost
+    session.detachContextRequest()
+    runtime.ports.host.scope.undeclare(previous)
     if (token !== null) {
         runtime.ports.host.tokens.remove(previous, token)
     }
