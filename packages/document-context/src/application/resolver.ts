@@ -183,6 +183,27 @@ export function findInFlightRegistration(
 }
 
 /**
+ * Whether an in-flight factory may answer this caller.
+ *
+ * An `active` session shares its in-flight promise. A session that is still `starting` does not
+ * answer an element injection; the exception is the factory calling back into itself, which is a
+ * cycle and must be rejected instead of waiting.
+ *
+ * @param session - The session that owns the factory.
+ * @param registration - The in-flight registration.
+ * @returns `true` when the caller should join the in-flight promise.
+ */
+export function joinsInFlight(
+    session: SessionRuntime<any>,
+    registration: ProviderRegistration,
+): boolean {
+    if (session.status === 'active') {
+        return true
+    }
+    return factoryIsAncestor(registration)
+}
+
+/**
  * Multi-value factories that have already started and have not finished.
  *
  * Groups stay in nearest-first order. A caller that is one of those factories is rejected when

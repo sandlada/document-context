@@ -15,7 +15,7 @@ import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
 import { resolveMultiGroups, settleInjectGroups } from '../multi-resolve'
-import { dispatchMultiRequest, findInFlightMultiGroups, locateMulti } from '../resolver'
+import { dispatchMultiRequest, findInFlightMultiGroups, joinsInFlight, locateMulti } from '../resolver'
 import { completeOnUnsubscribe } from './complete-on-unsubscribe'
 
 /** Options of a multi-value injection. */
@@ -89,6 +89,13 @@ export function beginInjectAll<TTarget = unknown>(
         }
     }
     const inFlight = findInFlightMultiGroups(runtime, host, token)
+        .map((group) => ({
+            session: group.session,
+            registrations: group.registrations.filter((registration) =>
+                joinsInFlight(group.session, registration),
+            ),
+        }))
+        .filter((group) => group.registrations.length > 0)
     if (inFlight.length > 0) {
         return {
             promise: resolveMultiGroups(runtime, inFlight, direction),

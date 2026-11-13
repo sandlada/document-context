@@ -14,7 +14,7 @@ import type { ApplicationRuntime, PendingRequest } from '../context'
 import type { SessionRuntime } from '../session'
 import { assertOwnedSession } from '../application/isolation'
 import { createPendingRequest, retryPendingRequest } from '../pending'
-import { dispatchRequest, findInFlightRegistration, locateSingle, resolveProviderValue } from '../resolver'
+import { dispatchRequest, findInFlightRegistration, joinsInFlight, locateSingle, resolveProviderValue } from '../resolver'
 import { completeOnUnsubscribe } from './complete-on-unsubscribe'
 
 /** Options of a single-value injection. */
@@ -97,7 +97,7 @@ export function beginInjection<TTarget = unknown>(
         }
     }
     const inFlight = findInFlightRegistration(runtime, host, token)
-    if (inFlight !== undefined) {
+    if (inFlight !== undefined && joinsInFlight(inFlight.session, inFlight.registration)) {
         return {
             promise: resolveProviderValue(runtime, inFlight.session, inFlight.registration),
             cancel: () => undefined,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
 import { defineToken } from '../../domain/model/token'
 import { DocumentContextError } from '../../domain/model/errors'
+import { onMount } from './hooks'
 import { provide } from './provide'
 import { createTestApplication } from '../testing/fakes'
 
@@ -441,5 +442,60 @@ describe('inject', () => {
         await adapter.clock.flushMicrotasks()
 
         await expect(pending).rejects.toBe('boom')
+    })
+
+    it('[LC #2] 元素 inject 不加入仍在 starting 的進行中工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        let releaseFactory: () => void = () => undefined
+        const factoryGate = new Promise<void>((resolve) => {
+            releaseFactory = resolve
+        })
+        let releaseMount: () => void = () => undefined
+        const mountGate = new Promise<void>((resolve) => {
+            releaseMount = resolve
+        })
+        const parent = adapter.createHost()
+        const child = adapter.createHost()
+        child.setParent(parent)
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(
+                    themeToken,
+                    async () => {
+                        await factoryGate
+                        return 'dark'
+                    },
+                    { eager: true },
+                ),
+                onMount(() => mountGate),
+            ),
+        )(parent)
+        for (let step = 0; step < 4; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('starting')
+
+        let settled = false
+        const pending = app.inject(themeToken)(child).then((value) => {
+            settled = true
+            return value
+        })
+        for (let step = 0; step < 4; step += 1) {
+            await Promise.resolve()
+        }
+        expect(settled).toBe(false)
+
+        releaseFactory()
+        for (let step = 0; step < 6; step += 1) {
+            await Promise.resolve()
+        }
+        expect(session.status).toBe('starting')
+        expect(settled).toBe(false)
+
+        releaseMount()
+        await session.ready
+        await adapter.clock.flushMicrotasks()
+        await expect(pending).resolves.toBe('dark')
     })
 })
