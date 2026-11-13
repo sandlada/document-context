@@ -662,7 +662,10 @@ export async function resolveUsedValue(
 ): Promise<unknown> {
     const own = lastSingleRegistration(session, token)
     if (own !== undefined) {
-        return resolveProviderValue(runtime, session, own)
+        const owned = singletonWinner(runtime, session, own)
+        if (owned !== undefined) {
+            return resolveProviderValue(runtime, owned.session, owned.registration)
+        }
     }
     const starting = nearestStartingProvider(runtime, session, token)
     if (starting !== undefined) {
@@ -718,19 +721,26 @@ function isUsedResolvable(
     session: SessionRuntime<any>,
     token: TokenLike,
 ): boolean {
-    if (lastSingleRegistration(session, token) !== undefined) {
+    const own = lastSingleRegistration(session, token)
+    if (own !== undefined && singletonWinner(runtime, session, own) !== undefined) {
         return true
     }
     const scope = runtime.ports.host.scope
     for (const host of chainFrom(session.adapterHost)) {
-        if (scope.declarationsOf(host).some((entry) => entry.token === token && !entry.multi)) {
-            return true
-        }
+        const declared = scope
+            .declarationsOf(host)
+            .find((entry) => entry.token === token && !entry.multi)
         const ancestor = runtime.sessions.get(host)
-        if (ancestor === undefined) {
-            continue
+        if (ancestor !== undefined) {
+            const ancestorSingle = lastSingleRegistration(ancestor, token)
+            if (
+                ancestorSingle !== undefined &&
+                singletonWinner(runtime, ancestor, ancestorSingle) !== undefined
+            ) {
+                return true
+            }
         }
-        if (lastSingleRegistration(ancestor, token) !== undefined) {
+        if (declared !== undefined && declared.owner !== runtime) {
             return true
         }
     }

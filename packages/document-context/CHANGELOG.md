@@ -76,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A `multi` singleton that already owns a token keeps the later single-value singleton from running its factory. Single-value `inject` does not receive that later value.
 - That later registration also does not answer `context-request`, so a DOM lookup cannot run its factory either.
 - An eager singleton that lost the claim does not run during initialization either. `ready` still fulfills.
+- A `uses` dependency does not run that losing factory either. Initialization rejects `UNKNOWN_SERVICE` before the factory starts.
 
 ### Changed
 

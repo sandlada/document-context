@@ -370,6 +370,35 @@ describe('injection lifecycle', () => {
         expect(calls).toBe(0)
     })
 
+    it('[SCOPE #9] uses 不會執行落敗的 singleton 工廠', async () => {
+        const { app, adapter } = createTestApplication()
+        const dep = defineToken<string>('public')('app:dep-loser')
+        const outer = defineToken<string>('public')('app:outer-loser')
+        let calls = 0
+        const owner = app.mount(
+            pipe(
+                createContext({}),
+                provide(dep, () => 'multi', { lifecycle: 'singleton', multi: true }),
+            ),
+        )(adapter.createHost())
+        await owner.ready
+
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(dep, () => {
+                    calls += 1
+                    return 'single'
+                }, { lifecycle: 'singleton' }),
+                provide(outer, ({ use }) => use(dep), { uses: [dep], eager: true }),
+            ),
+        )(adapter.createHost())
+
+        await expect(session.ready).rejects.toMatchObject({ code: 'UNKNOWN_SERVICE' })
+        expect(calls).toBe(0)
+        expect(session.status).toBe('disposed')
+    })
+
     it('[SCOPE #9] 暫停中的 singleton 擁有者不回答注入', async () => {
         const { app, adapter } = createTestApplication()
         const ownerHost = adapter.createHost()
