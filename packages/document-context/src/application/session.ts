@@ -334,6 +334,11 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
         this.disconnected = true
     }
 
+    /** The session is on a connected host again, so the old disconnect no longer applies. */
+    clearDisconnected(): void {
+        this.disconnected = false
+    }
+
     /** Whether the host was confirmed disconnected during initialization. */
     get isDisconnected(): boolean {
         return this.disconnected

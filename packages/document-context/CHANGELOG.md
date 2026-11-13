@@ -81,6 +81,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Skipped `onMount` hooks replayed on resume also stop once the session is `disposed`. Later mount hooks do not run after `onDispose`.
 - A keyed token whose host is disconnected, before that disconnect is confirmed, can be mounted on another connected host. That keeps the same session instead of raising `KEYED_CONFLICT`, and the stale recheck does not suspend it.
 - That move also carries the provider declarations to the new host, announces `context-mount`, and wakes pending element injections in this application and in other bundles sharing the document.
+- Moving onto a connected host clears a disconnect that was already recorded during `starting`, so initialization still enters `active`.
 
 ### Changed
 

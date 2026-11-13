@@ -213,6 +213,9 @@ export function moveConnectedSession(
     }
     runtime.unregisterSession(session)
     session.rebind(host)
+    if (runtime.ports.host.connectivity.isConnected(host)) {
+        session.clearDisconnected()
+    }
     runtime.registerSession(session)
     if (token !== null) {
         runtime.ports.host.tokens.write(host, token)
@@ -246,6 +249,9 @@ export function resumeSession(
     }
     runtime.unregisterSession(session)
     session.rebind(host)
+    if (runtime.ports.host.connectivity.isConnected(host)) {
+        session.clearDisconnected()
+    }
     runtime.registerSession(session)
     if (token !== null) {
         runtime.ports.host.tokens.write(host, token)

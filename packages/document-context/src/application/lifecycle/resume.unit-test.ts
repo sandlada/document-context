@@ -689,4 +689,33 @@ describe('resume', () => {
 
         await expect(pending).resolves.toBe('dark')
     })
+
+    it('[LC #2] 初始化期間斷線已記下後又挪到新宿主，仍會進入 active', async () => {
+        const { app, adapter } = createTestApplication()
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const blueprint = pipe(
+            createContext({ count: 1 }),
+            onMount(() => gate),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:clear-flag' })(first)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('starting')
+
+        adapter.setConnected(first, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('starting')
+
+        const second = adapter.createHost()
+        const moved = app.mount(blueprint, { token: 'app:clear-flag' })(second)
+        expect(moved).toBe(session)
+
+        release()
+        await session.ready
+        expect(session.status).toBe('active')
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(1)
+    })
 })
