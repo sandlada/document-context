@@ -9,6 +9,7 @@
 import type { Host } from '../../domain/model/session'
 import type { ApplicationRuntime } from '../context'
 import type { SessionRuntime } from '../session'
+import { schedulePendingRetry } from '../pending'
 import { watchConnectivity } from './disconnect'
 import { settleHooks } from './hooks'
 
@@ -205,6 +206,8 @@ export function moveConnectedSession(
 ): void {
     const token = session.token
     const previous = session.adapterHost
+    session.detachContextRequest()
+    runtime.ports.host.scope.undeclare(previous)
     if (token !== null) {
         runtime.ports.host.tokens.remove(previous, token)
     }
@@ -214,7 +217,10 @@ export function moveConnectedSession(
     if (token !== null) {
         runtime.ports.host.tokens.write(host, token)
     }
+    runtime.ports.host.scope.declare(host, session.declarations())
+    session.attachContextRequest()
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
+    schedulePendingRetry(runtime)
 }
 
 /**

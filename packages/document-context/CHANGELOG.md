@@ -80,6 +80,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Completing `state$`, `lifecycle$`, or `errors$` from inside a subscriber no longer drops that emission for subscribers who have not received it yet. They get the current value, then completion.
 - Skipped `onMount` hooks replayed on resume also stop once the session is `disposed`. Later mount hooks do not run after `onDispose`.
 - A keyed token whose host is disconnected, before that disconnect is confirmed, can be mounted on another connected host. That keeps the same session instead of raising `KEYED_CONFLICT`, and the stale recheck does not suspend it.
+- That move also carries the provider declarations to the new host and wakes pending element injections there.
 
 ### Changed
 

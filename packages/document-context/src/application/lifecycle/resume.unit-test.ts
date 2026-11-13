@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
+import { defineToken } from '../../domain/model/token'
 import { onDispose, onMount, onResume, onSuspend } from '../api/hooks'
+import { provide } from '../api/provide'
 import { createApplication } from '../application'
 import { createTestApplication } from '../testing/fakes'
 
@@ -658,5 +660,33 @@ describe('resume', () => {
         await adapter.clock.flushMicrotasks()
         expect(session.status).toBe('active')
         expect(app.read((state: CounterState) => state.count)(session)).toBe(3)
+    })
+
+    it('[SCOPE #12] 斷線尚未確認就挪到新宿主時，該宿主上的 pending 注入會完成', async () => {
+        const { app, adapter } = createTestApplication()
+        const theme = defineToken<string>('public')('app:move-theme')
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            provide(theme, () => 'dark'),
+        )
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:move-provider' })(first)
+        await session.ready
+
+        const second = adapter.createHost()
+        let value: string | undefined
+        const pending = app.inject(theme)(second).then((resolved) => {
+            value = resolved
+            return resolved
+        })
+        await adapter.clock.flushMicrotasks()
+        expect(value).toBeUndefined()
+
+        adapter.setConnected(first, false)
+        const moved = app.mount(blueprint, { token: 'app:move-provider' })(second)
+        expect(moved).toBe(session)
+        await adapter.clock.flushMicrotasks()
+
+        await expect(pending).resolves.toBe('dark')
     })
 })
