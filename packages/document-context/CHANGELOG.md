@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Mounting a keyed session again on the same host after it was suspended resumes that session. It no longer throws `KEYED_CONFLICT`.
 - An element `inject` or `injectAll` does not join a factory that is still running on a `starting` session. It waits until that session is `active`. A factory that injects itself still fails with `CIRCULAR_DEPENDENCY`.
 - A session stays visible to `inject` while its `onSuspend` promise is still running. Providers are withdrawn only when the status actually becomes `suspended`.
 - `errors$` drops its initialization buffer when the session leaves `starting`. A subscriber that attaches only after `ready` sees later errors, not the ones from initialization.

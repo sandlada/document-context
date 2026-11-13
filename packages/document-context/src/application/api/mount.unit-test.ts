@@ -214,6 +214,25 @@ describe('mount', () => {
         }
     })
 
+    it('[LC #5] 暫停後回到同一宿主會恢復而不是 KEYED_CONFLICT', async () => {
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(createContext({ count: 1 }), { token: 'app:again' })(host)
+        await session.ready
+        app.update((state: { count: number }) => ({ count: state.count + 1 }))(session)
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('suspended')
+
+        adapter.setConnected(host, true)
+        const again = app.mount(createContext({ count: 0 }), { token: 'app:again' })(host)
+
+        expect(again).toBe(session)
+        expect(again.status).toBe('active')
+        expect(app.read((state: { count: number }) => state.count)(again)).toBe(2)
+    })
+
     it('[API #17] 跨宿主衝突不受 replace 影響', async () => {
         const { app, adapter } = createTestApplication()
         const first = app.mount(createContext({ count: 0 }), { token: 'app:shared' })(

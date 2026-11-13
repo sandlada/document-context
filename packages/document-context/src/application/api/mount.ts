@@ -100,7 +100,14 @@ export function mountSession<S, TTarget = unknown>(
     const occupying = runtime.sessions.get(host)
     const identityMismatch =
         explicitToken !== undefined && existingToken !== null && explicitToken !== existingToken
-    if (occupying !== undefined || identityMismatch) {
+    // A suspended keyed session on this host is waiting to be mounted again. That is resuscitation,
+    // including the same element reconnecting. An active session on this host is still a conflict.
+    const restorable =
+        occupying !== undefined &&
+        occupying.token !== null &&
+        occupying.token === token &&
+        (occupying.status === 'suspended' || isSuspending(occupying))
+    if ((occupying !== undefined && !restorable) || identityMismatch) {
         if (onConflict === 'throw') {
             throw new DocumentContextError(
                 'KEYED_CONFLICT',
