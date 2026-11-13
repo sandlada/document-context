@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { createContext, pipe } from '../../../src/domain/model/blueprint'
 import { DocumentContextError } from '../../../src/domain/model/errors'
 import { createApplication } from '../../../src/application/application'
-import { createDomHostAdapter } from '../../../src/infrastructure/dom/host-adapter'
-import { KEYED_IDENTITY_ATTRIBUTE } from '../../../src/infrastructure/dom/host-adapter'
+import { onAdopt } from '../../../src/application/api/hooks'
+import { createDomHostAdapter, KEYED_IDENTITY_ATTRIBUTE } from '../../../src/infrastructure/dom/host-adapter'
 
 const created: Element[] = []
 
@@ -114,5 +115,32 @@ describe('dom host adapter', () => {
         app.dispose(session)
 
         expect(host.getAttribute(KEYED_IDENTITY_ATTRIBUTE)).toBe('app:other')
+    })
+
+    it('[LC #4] 同一回合 adoptNode 再插入新文件仍保持 active', async () => {
+        const adapter = createDomHostAdapter()
+        const app = createApplication({ host: adapter })
+        let adopted = 0
+        const host = element('div')
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                onAdopt(() => {
+                    adopted += 1
+                }),
+            ),
+        )(host)
+        await session.ready
+
+        const other = document.implementation.createHTMLDocument('other')
+        other.adoptNode(host)
+        other.body.appendChild(host)
+        for (let index = 0; index < 8; index += 1) {
+            await Promise.resolve()
+        }
+
+        expect(host.isConnected).toBe(true)
+        expect(session.status).toBe('active')
+        expect(adopted).toBe(1)
     })
 })
