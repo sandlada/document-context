@@ -110,7 +110,10 @@ export function locateSingle(
         const own = lastSingleRegistration(origin, token)
         if (own !== undefined) {
             const owned = singletonWinner(runtime, origin, own)
-            if (owned.session.status === 'active' || owned.session === origin) {
+            if (
+                owned !== undefined &&
+                (owned.session.status === 'active' || owned.session === origin)
+            ) {
                 return { kind: 'local', session: owned.session, registration: owned.registration }
             }
         }
@@ -138,6 +141,9 @@ export function locateSingle(
             continue
         }
         const owned = singletonWinner(runtime, session, registration)
+        if (owned === undefined) {
+            continue
+        }
         if (owned.session.status !== 'active' && owned.session !== origin) {
             continue
         }
@@ -227,19 +233,24 @@ function singletonWinner(
     runtime: ApplicationRuntime,
     session: SessionRuntime<any>,
     registration: ProviderRegistration,
-): { session: SessionRuntime<any>; registration: ProviderRegistration } {
+): { session: SessionRuntime<any>; registration: ProviderRegistration } | undefined {
     if (registration.lifecycle !== 'singleton') {
         return { session, registration }
     }
+    const winner = runtime.singletonRegistrations.get(registration.token)
     const owner = runtime.singletonOwners.get(registration.token)
-    if (owner === undefined || owner === session) {
+    if (winner === undefined || owner === undefined) {
         return { session, registration }
     }
-    const owned = lastSingleRegistration(owner, registration.token)
-    if (owned === undefined) {
-        return { session, registration }
+    if (winner === registration) {
+        return { session: owner, registration }
     }
-    return { session: owner, registration: owned }
+    // A multi singleton owns the token. It does not answer single-value inject, and a later
+    // single-value registration must not run its factory.
+    if (winner.multi) {
+        return undefined
+    }
+    return { session: owner, registration: winner }
 }
 
 /**
@@ -613,7 +624,10 @@ function nearestStartingProvider(
             const registration = lastSingleRegistration(current, token)
             if (registration !== undefined) {
                 const owned = singletonWinner(runtime, current, registration)
-                if (owned.session.status === 'starting' || owned.session.status === 'active') {
+                if (
+                    owned !== undefined &&
+                    (owned.session.status === 'starting' || owned.session.status === 'active')
+                ) {
                     return owned
                 }
             }

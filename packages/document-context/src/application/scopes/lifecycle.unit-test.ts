@@ -310,6 +310,39 @@ describe('injection lifecycle', () => {
         expect(codes).toContain('SINGLETON_CONFLICT')
     })
 
+    it('[SCOPE #9] multi singleton 佔用後，後註冊的單值工廠不執行', async () => {
+        const { app, adapter } = createTestApplication()
+        const token = defineToken<string>('public')('app:singleton-mixed')
+        let singleCalls = 0
+        const owner = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => 'multi', { lifecycle: 'singleton', multi: true }),
+            ),
+        )(adapter.createHost())
+        await owner.ready
+
+        const session = app.mount(
+            pipe(
+                createContext({}),
+                provide(token, () => {
+                    singleCalls += 1
+                    return 'single'
+                }, { lifecycle: 'singleton' }),
+            ),
+        )(adapter.createHost())
+        const codes: string[] = []
+        session.errors$.subscribe((error) => codes.push(error.code))
+        await session.ready
+
+        await expect(app.inject(token)(session)).rejects.toMatchObject({
+            code: 'UNKNOWN_SERVICE',
+        })
+        expect(singleCalls).toBe(0)
+        expect(codes).toContain('SINGLETON_CONFLICT')
+        await expect(app.injectAll(token)(owner)).resolves.toEqual(['multi'])
+    })
+
     it('[SCOPE #9] 暫停中的 singleton 擁有者不回答注入', async () => {
         const { app, adapter } = createTestApplication()
         const ownerHost = adapter.createHost()
