@@ -22,6 +22,12 @@ export interface ErrorStream {
      * @param error - The error to publish.
      */
     push(error: DocumentContextError): void
+    /**
+     * Drop initialization errors that nobody subscribed to.
+     *
+     * After the session leaves `starting`, `errors$` is a plain hot stream.
+     */
+    stopBuffering(): void
     /** Complete the stream. */
     complete(): void
 }
@@ -97,6 +103,15 @@ class ErrorStreamImpl implements ErrorStream {
             this.buffer.shift()
             this.dropped += 1
         }
+    }
+
+    stopBuffering(): void {
+        if (this.drained || this.closed) {
+            return
+        }
+        this.buffer = []
+        this.dropped = 0
+        this.drained = true
     }
 
     complete(): void {

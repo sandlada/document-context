@@ -146,6 +146,25 @@ describe('injection lifecycle', () => {
         expect(second.status).toBe('active')
     })
 
+    it('[RX #4] ready 之後才訂閱 errors$ 收不到初始化期的錯誤', async () => {
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(
+            createContext({}),
+            provide(singletonToken, () => ({ id: 1 }), { lifecycle: 'singleton' }),
+        )
+        const first = app.mount(blueprint)(adapter.createHost())
+        await first.ready
+
+        const second = app.mount(blueprint)(adapter.createHost())
+        await second.ready
+
+        const codes: string[] = []
+        second.errors$.subscribe((error) => codes.push(error.code))
+
+        expect(codes).toEqual([])
+        expect(second.status).toBe('active')
+    })
+
     it('[SCOPE #9] transient 每次注入重新呼叫工廠', async () => {
         const { app, adapter } = createTestApplication()
         let calls = 0

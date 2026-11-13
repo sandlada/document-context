@@ -446,6 +446,9 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
     }
 
     private runLeaveStartingCleanups(): void {
+        // Initialization buffering ends with `starting`. A subscriber that attaches afterwards
+        // only sees new errors.
+        this.errorStream.stopBuffering()
         for (const cleanup of this.leaveStartingCleanups.splice(0)) {
             cleanup()
         }
