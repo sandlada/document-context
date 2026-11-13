@@ -220,11 +220,15 @@ export function moveConnectedSession(
     if (token !== null) {
         runtime.ports.host.tokens.write(host, token)
     }
-    runtime.ports.host.scope.declare(host, session.declarations())
-    session.attachContextRequest()
     session.setConnectivityWatcher(watchConnectivity(runtime, session))
-    runtime.ports.host.scope.announce(host, 'mount', token)
-    schedulePendingRetry(runtime)
+    // Only an active session is visible. A `starting` session publishes when initialization
+    // finishes, on whichever host it is bound to then.
+    if (session.status === 'active') {
+        runtime.ports.host.scope.declare(host, session.declarations())
+        session.attachContextRequest()
+        runtime.ports.host.scope.announce(host, 'mount', token)
+        schedulePendingRetry(runtime)
+    }
 }
 
 /**

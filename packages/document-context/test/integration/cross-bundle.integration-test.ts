@@ -3,6 +3,7 @@ import { createContext, pipe } from '../../src/domain/model/blueprint'
 import { defineToken } from '../../src/domain/model/token'
 import { createApplication } from '../../src/application/application'
 import { provide } from '../../src/application/api/provide'
+import { onMount } from '../../src/application/api/hooks'
 import { createDomHostAdapter } from '../../src/infrastructure/dom/host-adapter'
 
 const themeToken = defineToken<string>('public')('app:theme')
@@ -197,6 +198,55 @@ describe('cross bundle', () => {
         expect(moved).toBe(session)
         await flush()
 
+        await expect(pending).resolves.toBe('dark')
+    })
+
+    it('[LC #2] starting 期間換宿主不會提前回答 context-request', async () => {
+        const providerBundle = createDomHostAdapter()
+        const consumerBundle = createDomHostAdapter()
+        const providerApp = createApplication({ host: providerBundle })
+        const consumerApp = createApplication({ host: consumerBundle })
+        let release: () => void = () => undefined
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const first = element('section')
+        const second = element('section')
+        const session = providerApp.mount(
+            pipe(
+                createContext({}),
+                provide(themeToken, () => 'dark'),
+                onMount(() => gate),
+            ),
+            { token: 'app:early-host' },
+        )(first)
+        await flush()
+        expect(session.status).toBe('starting')
+
+        first.remove()
+        const moved = providerApp.mount(
+            pipe(
+                createContext({}),
+                provide(themeToken, () => 'dark'),
+                onMount(() => gate),
+            ),
+            { token: 'app:early-host' },
+        )(second)
+        expect(moved).toBe(session)
+        expect(session.status).toBe('starting')
+
+        let settled = false
+        const pending = consumerApp.inject(themeToken)(second).then((value) => {
+            settled = true
+            return value
+        })
+        await flush()
+        expect(settled).toBe(false)
+
+        release()
+        await session.ready
+        await flush()
+        expect(session.status).toBe('active')
         await expect(pending).resolves.toBe('dark')
     })
 })

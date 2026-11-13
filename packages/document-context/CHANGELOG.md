@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Moving a keyed session that is still `starting` rebinds the host without declaring providers or dispatching `context-mount`. Those publish when the session becomes `active`.
 - Keyed resuscitation no longer re-runs `onMount` after it already ran on the first `active` transition; skipped `onMount` hooks still run once on the first resume, then only `onResume` on later resumes.
 - Resuming a keyed session rebinds connectivity watching to the new host so later disconnects suspend correctly.
 - `onSuspend` is not invoked when a session moves from `starting` straight to `suspended` during initialization.
