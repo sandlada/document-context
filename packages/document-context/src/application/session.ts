@@ -254,13 +254,16 @@ export class SessionRuntime<S = any> implements Session<S, Host> {
         const hooks = this.blueprint.hooks.filter((hook) => hook.type === 'mount')
         const runFrom = (index: number): Promise<void> | undefined => {
             for (let cursor = index; cursor < hooks.length; cursor += 1) {
+                if (this.isDisposed) {
+                    return undefined
+                }
                 const result = hooks[cursor]?.hook(this)
                 if (typeof result === 'function') {
                     this.cleanups.push(result)
                     continue
                 }
                 if (result instanceof Promise) {
-                    return result.then(() => runFrom(cursor + 1))
+                    return result.then(() => (this.isDisposed ? undefined : runFrom(cursor + 1)))
                 }
             }
             return undefined

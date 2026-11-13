@@ -78,6 +78,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An eager singleton that lost the claim does not run during initialization either. `ready` still fulfills.
 - A `uses` dependency does not run that losing factory either. Initialization rejects `UNKNOWN_SERVICE` before the factory starts.
 - Completing `state$`, `lifecycle$`, or `errors$` from inside a subscriber no longer drops that emission for subscribers who have not received it yet. They get the current value, then completion.
+- Skipped `onMount` hooks replayed on resume also stop once the session is `disposed`. Later mount hooks do not run after `onDispose`.
 
 ### Changed
 

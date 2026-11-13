@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createContext, pipe } from '../../domain/model/blueprint'
-import { onMount, onResume, onSuspend } from '../api/hooks'
+import { onDispose, onMount, onResume, onSuspend } from '../api/hooks'
 import { createApplication } from '../application'
 import { createTestApplication } from '../testing/fakes'
 
@@ -609,5 +609,36 @@ describe('resume', () => {
         }
         expect(session.status).toBe('active')
         expect(suspends).toBe(1)
+    })
+
+    it('[LC #8] 補跑 onMount 時會話已 disposed 則不再跑後續鉤子', async () => {
+        const { app, adapter } = createTestApplication()
+        const order: string[] = []
+        const blueprint = pipe(
+            createContext({ count: 0 }),
+            onMount((current) => {
+                order.push('first')
+                app.dispose(current)
+            }),
+            onMount(() => {
+                order.push('second')
+            }),
+            onDispose(() => {
+                order.push('dispose')
+            }),
+        )
+        const host = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:mount-dispose' })(host)
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+        await session.ready
+        expect(session.status).toBe('suspended')
+        expect(order).toEqual([])
+
+        const next = adapter.createHost()
+        app.mount(blueprint, { token: 'app:mount-dispose' })(next)
+
+        expect(order).toEqual(['first', 'dispose'])
+        expect(session.status).toBe('disposed')
     })
 })
