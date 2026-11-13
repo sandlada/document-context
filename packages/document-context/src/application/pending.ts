@@ -194,6 +194,8 @@ export function createPendingRequest(
     watchStructure()
     unsubscribe = connectivity.subscribe(options.host, (connected) => {
         if (connected) {
+            bindNearestOwner()
+            schedulePendingRetry(runtime)
             return
         }
         scheduler.microtask(() => {

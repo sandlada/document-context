@@ -106,4 +106,33 @@ describe('dom late binding', () => {
         expect(value).toBe('dark')
         await pending
     })
+
+    it('[SCOPE #12] 斷線後再掛到提供者下，等待中的注入會完成', async () => {
+        const adapter = createDomHostAdapter()
+        const app = createApplication({ host: adapter })
+        const providerHost = element('section')
+        const stray = element('span')
+        const session = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+        )(providerHost)
+        await session.ready
+
+        let value: string | undefined
+        const pending = app.inject(themeToken, { wait: true })(stray).then((resolved) => {
+            value = resolved
+        })
+        pending.catch(() => undefined)
+        await flush()
+        expect(value).toBeUndefined()
+
+        stray.remove()
+        await flush()
+        expect(value).toBeUndefined()
+
+        providerHost.appendChild(stray)
+        await flush()
+
+        expect(value).toBe('dark')
+        await pending
+    })
 })

@@ -99,7 +99,8 @@ export function createDomObserver(document: Document, scheduler: SchedulerPort):
                 for (const listener of [...entry.listeners]) {
                     listener(connected, docChanged ? currentDoc : undefined)
                 }
-            } else if (parentChanged) {
+            }
+            if (parentChanged) {
                 for (const listener of [...entry.structureListeners]) {
                     listener()
                 }
