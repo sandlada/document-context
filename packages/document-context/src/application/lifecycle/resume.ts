@@ -164,6 +164,60 @@ export function findSuspendingSession(
 }
 
 /**
+ * A keyed session whose host is already disconnected, before the confirm microtask suspends it.
+ *
+ * @param runtime - The application runtime.
+ * @param token - The keyed identity.
+ * @returns The session, or `undefined`.
+ */
+export function findUnconfirmedDisconnect(
+    runtime: ApplicationRuntime,
+    token: string,
+): SessionRuntime<any> | undefined {
+    for (const session of runtime.sessions.values()) {
+        if (session.token !== token) {
+            continue
+        }
+        if (session.status !== 'active' && session.status !== 'starting') {
+            continue
+        }
+        if (runtime.ports.host.connectivity.isConnected(session.adapterHost)) {
+            continue
+        }
+        return session
+    }
+    return undefined
+}
+
+/**
+ * Move a session that is still `active` or `starting` onto another connected host.
+ *
+ * The disconnect was not confirmed, so this is not a suspend/resume. Hooks stay as they are.
+ *
+ * @param runtime - The application runtime.
+ * @param session - The session to move.
+ * @param host - The new host.
+ */
+export function moveConnectedSession(
+    runtime: ApplicationRuntime,
+    session: SessionRuntime<any>,
+    host: Host,
+): void {
+    const token = session.token
+    const previous = session.adapterHost
+    if (token !== null) {
+        runtime.ports.host.tokens.remove(previous, token)
+    }
+    runtime.unregisterSession(session)
+    session.rebind(host)
+    runtime.registerSession(session)
+    if (token !== null) {
+        runtime.ports.host.tokens.write(host, token)
+    }
+    session.setConnectivityWatcher(watchConnectivity(runtime, session))
+}
+
+/**
  * Resume a suspended session on a new host.
  *
  * The `onMount` hooks that were skipped during initialization run first, then the `onResume`

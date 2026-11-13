@@ -30,7 +30,13 @@ export function watchConnectivity(
         if (connected) {
             return
         }
-        scheduleRecheck(runtime, session.adapterHost, () => {
+        const watched = session.adapterHost
+        scheduleRecheck(runtime, watched, () => {
+            // The session may already have moved to another host. The old host staying
+            // disconnected must not suspend that new mount.
+            if (session.adapterHost !== watched) {
+                return
+            }
             handleConfirmedDisconnect(runtime, session)
         })
     })

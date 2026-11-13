@@ -641,4 +641,22 @@ describe('resume', () => {
         expect(order).toEqual(['first', 'dispose'])
         expect(session.status).toBe('disposed')
     })
+
+    it('[LC #4] 斷線尚未確認時，同 token 掛到新宿主會恢復', async () => {
+        const { app, adapter } = createTestApplication()
+        const blueprint = pipe(createContext({ count: 1 }))
+        const first = adapter.createHost()
+        const session = app.mount(blueprint, { token: 'app:unconfirmed' })(first)
+        await session.ready
+        app.update({ count: 3 })(session)
+
+        adapter.setConnected(first, false)
+        const second = adapter.createHost()
+        const resumed = app.mount(blueprint, { token: 'app:unconfirmed' })(second)
+
+        expect(resumed).toBe(session)
+        await adapter.clock.flushMicrotasks()
+        expect(session.status).toBe('active')
+        expect(app.read((state: CounterState) => state.count)(session)).toBe(3)
+    })
 })

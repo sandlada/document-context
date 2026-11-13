@@ -18,7 +18,9 @@ import {
     suspendSession,
     findSuspendedSession,
     findSuspendingSession,
+    findUnconfirmedDisconnect,
     isSuspending,
+    moveConnectedSession,
     resumeSession,
 } from '../lifecycle/resume'
 import { watchConnectivity } from '../lifecycle/disconnect'
@@ -125,7 +127,8 @@ export function mountSession<S, TTarget = unknown>(
             }
             if (
                 session.token === token &&
-                (session.status === 'active' || session.status === 'starting')
+                (session.status === 'active' || session.status === 'starting') &&
+                runtime.ports.host.connectivity.isConnected(session.adapterHost)
             ) {
                 throw new DocumentContextError(
                     'KEYED_CONFLICT',
@@ -149,6 +152,11 @@ export function mountSession<S, TTarget = unknown>(
         if (suspendingSession !== undefined) {
             resumeSession(runtime, suspendingSession, host)
             return suspendingSession as SessionRuntime<S>
+        }
+        const unconfirmed = findUnconfirmedDisconnect(runtime, token)
+        if (unconfirmed !== undefined) {
+            moveConnectedSession(runtime, unconfirmed, host)
+            return unconfirmed as SessionRuntime<S>
         }
         const suspended = findSuspendedSession(runtime, token)
         if (suspended !== undefined && suspended.status === 'suspended') {
