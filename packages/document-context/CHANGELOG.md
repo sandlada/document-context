@@ -72,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A pending element injection that survives a disconnect with `wait: true` resolves after the element is connected again under a provider. A parent change is reported even when connectivity changes in the same check.
 - If the new host disconnects before a keyed resume finishes, the session becomes `suspended` once. `onSuspend` does not run a second time for that same departure.
 - An element `inject` or `injectAll` that starts while the element is disconnected waits one microtask before `UNCONNECTED_HOST`. Reconnecting under a provider during that check still resolves.
+- Once a session is `disposed`, later `onSuspend`, `onResume`, `onAdopt`, and `onMount` hooks do not run. A thrown hook still lets the remaining hooks of that kind run.
 
 ### Changed
 

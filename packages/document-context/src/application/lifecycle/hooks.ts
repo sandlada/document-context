@@ -23,6 +23,9 @@ import type { SessionRuntime } from '../session'
 export async function runHooks(session: SessionRuntime<any>, type: HookType): Promise<void> {
     const fatal = type === 'mount'
     for (const hook of session.blueprint.hooks) {
+        if (session.isDisposed) {
+            return
+        }
         if (hook.type !== type) {
             continue
         }
@@ -48,6 +51,9 @@ export function settleHooks(
     const hooks = session.blueprint.hooks.filter((hook) => hook.type === type)
     const runFrom = (index: number): Promise<void> | undefined => {
         for (let cursor = index; cursor < hooks.length; cursor += 1) {
+            if (session.isDisposed) {
+                return undefined
+            }
             const hook = hooks[cursor]
             if (hook === undefined) {
                 continue
@@ -69,14 +75,14 @@ export function settleHooks(
             }
             if (result instanceof Promise) {
                 return result.then(
-                    () => runFrom(cursor + 1) ?? undefined,
+                    () => (session.isDisposed ? undefined : runFrom(cursor + 1) ?? undefined),
                     (error: unknown) => {
                         session.reportError(
                             new DocumentContextError('HOOK_ERROR', 'Hook failed.', {
                                 details: { cause: error },
                             }),
                         )
-                        return runFrom(cursor + 1) ?? undefined
+                        return session.isDisposed ? undefined : runFrom(cursor + 1) ?? undefined
                     },
                 )
             }

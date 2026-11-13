@@ -156,4 +156,33 @@ describe('hook execution', () => {
         expect(codes).toContain('HOOK_ERROR')
         expect(order).toEqual(['second-suspend'])
     })
+
+    it('[LC #8] 會話已 disposed 後不再跑後續 onSuspend', async () => {
+        const order: string[] = []
+        const { app, adapter } = createTestApplication()
+        const host = adapter.createHost()
+        const session = app.mount(
+            pipe(
+                createContext({ count: 0 }),
+                onSuspend((current) => {
+                    order.push('suspend')
+                    app.dispose(current)
+                }),
+                onSuspend(() => {
+                    order.push('suspend-again')
+                }),
+                onDispose(() => {
+                    order.push('dispose')
+                }),
+            ),
+            { token: 'app:suspend-dispose' },
+        )(host)
+        await session.ready
+
+        adapter.setConnected(host, false)
+        await adapter.clock.flushMicrotasks()
+
+        expect(order).toEqual(['suspend', 'dispose'])
+        expect(session.status).toBe('disposed')
+    })
 })
