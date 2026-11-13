@@ -77,6 +77,47 @@ describe('inject', () => {
         expect(errors).toEqual([])
     })
 
+    it('[ERR #1] 注入當下未連線要等微任務確認，期間接回則繼續', async () => {
+        const { app, adapter } = createTestApplication()
+        const providerHost = adapter.createHost()
+        const leaf = adapter.createHost()
+        const provider = app.mount(
+            pipe(createContext({}), provide(themeToken, () => 'dark')),
+        )(providerHost)
+        await provider.ready
+
+        adapter.setConnected(leaf, false)
+        const pending = app.inject(themeToken)(leaf)
+        leaf.setParent(providerHost)
+        adapter.setConnected(leaf, true)
+        await adapter.clock.flushMicrotasks()
+
+        await expect(pending).resolves.toBe('dark')
+    })
+
+    it('[ERR #1] 注入當下未連線且微任務後仍不在，才拒絕', async () => {
+        const { app, adapter } = createTestApplication()
+        const leaf = adapter.createHost()
+        adapter.setConnected(leaf, false)
+
+        let settled = false
+        const pending = app.inject(themeToken)(leaf).then(
+            () => {
+                settled = true
+                return 'fulfilled'
+            },
+            (error: unknown) => {
+                settled = true
+                return error
+            },
+        )
+        await Promise.resolve()
+        expect(settled).toBe(false)
+
+        await adapter.clock.flushMicrotasks()
+        await expect(pending).resolves.toMatchObject({ code: 'UNCONNECTED_HOST' })
+    })
+
     it('[ERR #8] Session 目標等待在會話 dispose 後以 DISPOSED_SESSION 拒絕', async () => {
         const { app, adapter } = createTestApplication()
         const session = app.mount(createContext({}))(adapter.createHost())

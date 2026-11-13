@@ -87,14 +87,6 @@ export function beginInjection<TTarget = unknown>(
             )
         }
         host = resolved
-        if (!runtime.ports.host.connectivity.isConnected(host) && !wait) {
-            return rejected(
-                new DocumentContextError(
-                    'UNCONNECTED_HOST',
-                    'The injection target is not connected to the document.',
-                ),
-            )
-        }
     }
 
     const location = locateSingle(runtime, host, token, origin)

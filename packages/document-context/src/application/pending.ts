@@ -214,6 +214,26 @@ export function createPendingRequest(
         })
     })
     runtime.pending.add(request)
+    if (!options.wait && !connectivity.isConnected(options.host)) {
+        // A disconnect is only real after one microtask, matching session teardown. The caller may
+        // put the element back, under a provider, before that check.
+        scheduler.microtask(() => {
+            if (request.settled) {
+                return
+            }
+            if (connectivity.isConnected(options.host)) {
+                bindNearestOwner()
+                schedulePendingRetry(runtime)
+                return
+            }
+            request.reject(
+                new DocumentContextError(
+                    'UNCONNECTED_HOST',
+                    'The injection target is not connected to the document.',
+                ),
+            )
+        })
+    }
     return request
 }
 

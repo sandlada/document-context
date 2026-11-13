@@ -79,17 +79,6 @@ export function beginInjectAll<TTarget = unknown>(
             }
         }
         host = resolved
-        if (!runtime.ports.host.connectivity.isConnected(host) && !wait) {
-            return {
-                promise: Promise.reject(
-                    new DocumentContextError(
-                        'UNCONNECTED_HOST',
-                        'The injection target is not connected to the document.',
-                    ),
-                ),
-                cancel: () => undefined,
-            }
-        }
     }
 
     const location = locateMulti(runtime, host, token, origin)
