@@ -30,6 +30,30 @@ describe('dispose', () => {
         expect(lifecycleCompleted).toBe(true)
     })
 
+    it('[RX #5] dispose 之後訂閱 lifecycle$ 仍收到 disposed 與 reason', async () => {
+        const { app, adapter } = createTestApplication()
+        const session = app.mount(createContext({ count: 0 }))(adapter.createHost())
+        await session.ready
+        app.dispose(session)
+
+        const seen: Array<string | undefined> = []
+        let completed = false
+        session.lifecycle$.subscribe({
+            next: (event) => {
+                seen.push(event.type)
+                if (event.type === 'disposed') {
+                    seen.push(event.reason)
+                }
+            },
+            complete: () => {
+                completed = true
+            },
+        })
+
+        expect(seen).toEqual(['disposed', 'explicit'])
+        expect(completed).toBe(true)
+    })
+
     it('[LC #10] asyncDispose 等待非同步清理', async () => {
         let cleaned = false
         const blueprint = pipe(

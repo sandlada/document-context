@@ -45,6 +45,11 @@ class LifecycleStreamImpl implements LifecycleStream {
         })
         this.observable = new Observable<LifecycleEvent>((subscriber) => {
             if (this.closed) {
+                // `disposed` is the current status. A subscriber that attaches after the stream
+                // completed still receives that one backing event, then `complete`.
+                if (this.backed?.type === 'disposed') {
+                    subscriber.next(this.backed)
+                }
                 subscriber.complete()
                 return undefined
             }
