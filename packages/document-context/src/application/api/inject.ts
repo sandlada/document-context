@@ -106,10 +106,10 @@ export function beginInjection<TTarget = unknown>(
     if (location.kind === 'foreign' || !runtime.ports.host.scope.authoritative) {
         // The provider may live in another application or another bundle: ask the event bus.
         const values = dispatchRequest(runtime, host, token, false)
-        const first = values[0]
-        if (first !== undefined) {
+        if (values.length > 0) {
+            // `undefined` is a value. An empty list is the only "nobody answered" result.
             return {
-                promise: Promise.resolve(first),
+                promise: Promise.resolve(values[0]),
                 cancel: () => undefined,
             }
         }

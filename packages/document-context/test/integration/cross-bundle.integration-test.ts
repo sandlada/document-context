@@ -249,4 +249,27 @@ describe('cross bundle', () => {
         expect(session.status).toBe('active')
         await expect(pending).resolves.toBe('dark')
     })
+
+    it('[SCOPE #4] context-request 回呼 undefined 仍算最近提供者的回答', async () => {
+        const consumerBundle = createDomHostAdapter()
+        const consumerApp = createApplication({ host: consumerBundle })
+        const parent = element('section')
+        const child = element('button')
+        parent.append(child)
+        parent.addEventListener('context-request', (event) => {
+            const detail = (event as CustomEvent<{
+                context?: string
+                multi?: boolean
+                resolved?: boolean
+                callback?: (value: unknown) => void
+            }>).detail
+            if (detail?.context !== 'app:theme' || detail.multi === true || detail.resolved === true) {
+                return
+            }
+            detail.callback?.(undefined)
+            detail.resolved = true
+        })
+
+        await expect(consumerApp.inject(themeToken)(child)).resolves.toBeUndefined()
+    })
 })

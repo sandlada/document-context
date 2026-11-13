@@ -698,9 +698,8 @@ export async function resolveUsedValue(
     }
     if (location.kind === 'foreign') {
         const values = dispatchRequest(runtime, session.adapterHost, token, false)
-        const first = values[0]
-        if (first !== undefined) {
-            return await first
+        if (values.length > 0) {
+            return await values[0]
         }
     }
     throw new DocumentContextError(

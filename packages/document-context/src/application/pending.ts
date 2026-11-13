@@ -305,9 +305,8 @@ export function retryPendingRequest(runtime: ApplicationRuntime, request: Pendin
     }
     if (location.kind === 'foreign' || !runtime.ports.host.scope.authoritative) {
         const values = dispatchRequest(runtime, request.host, request.token, false)
-        const first = values[0]
-        if (first !== undefined) {
-            void Promise.resolve(first).then(
+        if (values.length > 0) {
+            void Promise.resolve(values[0]).then(
                 (value) => request.resolve([value]),
                 (error: unknown) => request.reject(error),
             )
